@@ -11,9 +11,11 @@ A macOS menu-bar app that shows the current Claude Code and Codex CLI plan / usa
 Clicking the gauge icon in your menu bar opens a popup with two sections:
 
 **Claude Code**
-- Subscription type (`max`, `pro`, …) and account email — parsed live from `claude auth status --json`.
-- Today's message count and token usage from `~/.claude/stats-cache.json`. If today's entry is missing (the stats cache is only refreshed intermittently), it falls back to the latest recorded day with a clear date label.
-- Cumulative totals (sessions, messages) and the `lastComputedDate` of the cache.
+- Subscription plan (`max`, `pro`, …) — parsed live from `claude auth status`.
+- **5-hour window** — remaining % and when it resets.
+- **Weekly window** — remaining % and when it resets.
+
+Both windows are the live, server-side rate-limit quotas, fetched from `GET https://claude.ai/api/oauth/usage` using the OAuth token Claude Code keeps in the macOS Keychain. The API reports `utilization` as the share **used** (0–100); the popup shows `100 − utilization` as remaining.
 
 **Codex (OpenAI Codex CLI)**
 - ChatGPT plan type, account email, organization title — decoded from the `id_token` JWT stored in `~/.codex/auth.json`.
@@ -23,13 +25,13 @@ The status-bar tooltip shows `Claude: <plan> · Codex: <plan>` so you get the he
 
 ## Data sources
 
-| Source            | What it reads                                                   | How                                       |
-|-------------------|-----------------------------------------------------------------|-------------------------------------------|
-| Claude Code auth  | subscription type, email, orgName, logged-in state              | `claude auth status` (JSON via stdout)    |
-| Claude Code stats | `dailyActivity`, `dailyModelTokens`, `lastComputedDate`, totals | `~/.claude/stats-cache.json`              |
-| Codex auth        | `auth_mode`, `id_token` (JWT claims: plan, email, subs-until)   | `~/.codex/auth.json` — JWT body only      |
+| Source             | What it reads                                                   | How                                                                          |
+|--------------------|-----------------------------------------------------------------|------------------------------------------------------------------------------|
+| Claude Code auth   | subscription type, email, orgName, logged-in state              | `claude auth status` (JSON via stdout)                                       |
+| Claude Code usage  | live 5h + weekly windows (`utilization`, `resets_at`)           | `GET https://claude.ai/api/oauth/usage`, Bearer token from macOS Keychain    |
+| Codex auth         | `auth_mode`, `id_token` (JWT claims: plan, email, subs-until)   | `~/.codex/auth.json` — JWT body only                                         |
 
-The app never prints or transmits raw tokens. Only the base64-decoded JWT **claims** are inspected to surface plan type, email, and renewal date; `access_token` is not read unless `id_token` is missing.
+The Claude.ai OAuth access token is read from the Keychain service `Claude Code-credentials` and sent **only** to `claude.ai` as an `Authorization: Bearer` header — it is never logged or persisted. For Codex, only the base64-decoded JWT **claims** are inspected (plan type, email, renewal date); the `access_token` is not read unless `id_token` is missing.
 
 ## Build & run
 
@@ -80,15 +82,20 @@ The ViewModel refreshes both providers every 5 minutes by default; the popup als
 
 ## Limitations
 
-- **Claude Code "limits" are usage estimates, not live rate-limit windows.** The Claude subscription rate-limit windows (`/usage` window / 5h reset) are server-side and not exposed via the CLI or local files. The popup shows your subscription type + your cache's per-day activity as an approximation. To display true live quota, an upstream change to expose those headers/claims or authenticated Claude.ai dashboard calls would be needed.
+- **The live 5h / weekly windows need a valid Claude.ai OAuth token.** The token lives in the macOS Keychain (`Claude Code-credentials`) and expires every few hours — Claude Code refreshes it on its own. When it is expired the popup shows *"claude.ai login expired — open Claude Code to refresh"* instead of stale numbers, and the next refresh picks up the new token automatically. The app does **not** refresh the token itself.
 - **Codex renewal date comes from the JWT `chatgpt_subscription_active_until` claim.** This claim is set when the token is minted; after renewal the old claim is stale (the timer floors at 0 days). The actual active subscription status is enforced server-side by ChatGPT.
 - The app reads `~/.claude/` and `~/.codex/` directly, so do **not** share logs/screenshots of `auth.json` contents with anyone.
 
-## Tests
+## Tests & debugging
 
 Pure-logic tests for the parsers (no network, no filesystem):
 ```bash
 swift test
+```
+
+`VerifyCli` prints live provider output (real Keychain + network) for ad-hoc debugging. Run it in **release** — a short-lived debug SwiftPM executable that does Foundation I/O and then exits trips a spurious `nano-malloc` abort as the Swift concurrency pool tears down; the long-running menu-bar app is unaffected:
+```bash
+swift run -c release VerifyCli
 ```
 
 ## License

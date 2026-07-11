@@ -63,6 +63,12 @@ public struct StatusBarView: View {
         return f
     }()
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        return f
+    }()
+
     private var latestUpdateText: String {
         let claudeFetched = viewModel.claude?.fetchedAt ?? .distantPast
         let codexFetched = viewModel.codex?.fetchedAt ?? .distantPast
@@ -78,21 +84,25 @@ public struct StatusBarView: View {
                 if let e = c.providerError {
                     errorRow(e)
                 } else {
-                    detailRow("Subscription", value(c.subscriptionType))
-                    detailRow("Auth", value(c.authMethod))
-                    detailRow("Account", value(c.email))
-                    if let today = c.today {
-                        detailRow("Today", "\(today.messageCount) msgs")
-                        detailRow("Tokens today", compact(today.tokens))
-                    } else if let latest = c.latestDay {
-                        detailRow("Last activity \(latest.date)",
-                                  "\(latest.messageCount) msgs")
-                        detailRow("Tokens that day", compact(latest.tokens))
+                    detailRow("Plan", value(c.subscriptionType))
+                    if let u = c.usage {
+                        if let fh = u.fiveHour {
+                            detailRow("5h remaining", remainingText(fh))
+                            detailRow("5h resets", resetText(fh))
+                        } else {
+                            placeholder("5h usage unavailable")
+                        }
+                        if let wk = u.sevenDay {
+                            detailRow("Weekly remaining", remainingText(wk))
+                            detailRow("Weekly resets", resetText(wk))
+                        } else {
+                            placeholder("Weekly usage unavailable")
+                        }
+                    } else if let ue = c.usageError {
+                        errorRow(ue)
+                    } else {
+                        placeholder("Loading usage…")
                     }
-                    if let total = c.totalMessages, let sess = c.totalSessions {
-                        detailRow("Total", "\(total) msgs · \(sess) sessions")
-                    }
-                    detailRow("Last refresh", value(c.lastComputedDate))
                 }
             } else {
                 placeholder("Loading…")
@@ -181,10 +191,15 @@ public struct StatusBarView: View {
 
     private func value(_ s: String?) -> String { s ?? "—" }
 
-    private func compact(_ n: Int) -> String {
-        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
-        if n >= 1_000 { return String(format: "%.1fK", Double(n) / 1_000) }
-        return "\(n)"
+    private func remainingText(_ w: ClaudeUsageWindow) -> String {
+        // utilization — использованная доля (0…100); осталось — разница.
+        let remaining = max(0, 100 - w.utilizationPercent)
+        return String(format: "%.0f%%", remaining)
+    }
+
+    private func resetText(_ w: ClaudeUsageWindow) -> String {
+        guard let r = w.resetsAt else { return "—" }
+        return Self.relativeFormatter.localizedString(for: r, relativeTo: Date())
     }
 
     private func dateOnly(_ d: Date) -> String {
