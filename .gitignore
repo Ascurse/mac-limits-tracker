@@ -1,0 +1,10 @@
+.DS_Store
+/.build
+/.swiftpm
+/build
+/*.xcodeproj
+/DerivedData
+/out
+/MacLimitsTracker.app
+/dist
+/.codegraph
