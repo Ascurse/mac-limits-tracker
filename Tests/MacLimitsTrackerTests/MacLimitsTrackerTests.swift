@@ -379,7 +379,8 @@ final class MenuBarDisplayModeTests: XCTestCase {
     }
 
     private func makeCodexStatus(
-        planType: String? = "plus"
+        planType: String? = "plus",
+        usage: CodexUsage? = nil
     ) -> CodexStatus {
         CodexStatus(
             loggedIn: true,
@@ -389,9 +390,22 @@ final class MenuBarDisplayModeTests: XCTestCase {
             subscriptionActiveUntil: nil,
             daysUntilRenewal: nil,
             accountOwner: nil,
+            usage: usage,
+            usageError: nil,
             fetchedAt: Self.sentinel,
             providerError: nil
         )
+    }
+
+    private func makeCodexUsage(primary: Double? = nil, secondary: Double? = nil) -> CodexUsage {
+        let snapshot = CodexUsageSnapshot(
+            primary: primary.map { CodexUsageWindow(usedPercent: $0, windowDurationMins: 300, resetsAt: nil) },
+            secondary: secondary.map { CodexUsageWindow(usedPercent: $0, windowDurationMins: 10080, resetsAt: nil) },
+            planType: "plus",
+            creditsBalance: nil,
+            rateLimitReachedType: nil
+        )
+        return CodexUsage(snapshot: snapshot, error: nil)
     }
 
     private func makeUsage(fiveHour: Double? = nil, sevenDay: Double? = nil) -> ClaudeUsage {
@@ -449,5 +463,198 @@ final class MenuBarDisplayModeTests: XCTestCase {
         let codex = makeCodexStatus(planType: nil)
         XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(claude: claude, codex: codex),
                        "Claude: Claude · Codex: Codex")
+    }
+
+    func test_iconAnd5h_showsCodexPercentFromUsage() {
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22))
+        let codex = makeCodexStatus(usage: makeCodexUsage(primary: 1))
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+                       "C 78% · X 99%")
+    }
+
+    func test_iconAnd5hWeekly_showsCodexWindowsFromUsage() {
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22, sevenDay: 5))
+        let codex = makeCodexStatus(usage: makeCodexUsage(primary: 1, secondary: 18))
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
+                       "C 5h 78% / 95% · X 5h 99% / 82%")
+    }
+}
+
+final class CodexUsageParserTests: XCTestCase {
+    private func envelope(_ resultJSON: String) -> Data {
+        Data("{\"id\":2,\"result\":\(resultJSON)}".utf8)
+    }
+
+    func test_parsesFullSnapshotWithBothWindows() throws {
+        let ok = envelope("""
+        {"rateLimits":{"limitId":"codex","planType":"plus",
+          "primary":{"usedPercent":1,"windowDurationMins":300,"resetsAt":1783816559},
+          "secondary":{"usedPercent":18,"windowDurationMins":10080,"resetsAt":1784374937},
+          "credits":{"hasCredits":false,"unlimited":false,"balance":"0"},
+          "individualLimit":null,"rateLimitReachedType":null},
+         "rateLimitsByLimitId":{},"rateLimitResetCredits":{"availableCount":0}}
+        """)
+        let snap = try XCTUnwrap(CodexUsageParser.parse(ok))
+        XCTAssertEqual(snap.planType, "plus")
+        let p = try XCTUnwrap(snap.primary)
+        XCTAssertEqual(p.usedPercent, 1, accuracy: 0.001)
+        XCTAssertEqual(p.windowDurationMins, 300)
+        XCTAssertEqual(try XCTUnwrap(p.resetsAt).timeIntervalSince1970, 1783816559, accuracy: 0.001)
+        let s = try XCTUnwrap(snap.secondary)
+        XCTAssertEqual(s.usedPercent, 18, accuracy: 0.001)
+        XCTAssertEqual(s.windowDurationMins, 10080)
+        XCTAssertNil(snap.rateLimitReachedType)
+    }
+
+    func test_handlesNullWindows() {
+        let ok = envelope("""
+        {"rateLimits":{"primary":null,"secondary":null,"planType":"free",
+          "credits":null,"rateLimitReachedType":null}}
+        """)
+        let snap = CodexUsageParser.parse(ok)
+        XCTAssertNotNil(snap)
+        XCTAssertEqual(snap?.planType, "free")
+        XCTAssertNil(snap?.primary)
+        XCTAssertNil(snap?.secondary)
+        XCTAssertNil(snap?.creditsBalance)
+    }
+
+    func test_rateLimitReachedTypeIsPassedThrough() throws {
+        let ok = envelope("""
+        {"rateLimits":{"primary":{"usedPercent":100,"windowDurationMins":300},
+          "planType":"plus","rateLimitReachedType":"rate_limit_reached"}}
+        """)
+        let snap = try XCTUnwrap(CodexUsageParser.parse(ok))
+        XCTAssertEqual(snap.rateLimitReachedType, "rate_limit_reached")
+    }
+
+    func test_returnsNilWhenRateLimitsIsNullOrNull() {
+        XCTAssertNil(CodexUsageParser.parse(envelope(#"{"rateLimits":null}"#)))
+        XCTAssertNil(CodexUsageParser.parse(envelope(#"{}"#)))
+    }
+
+    func test_returnsNilOnGarbage() {
+        XCTAssertNil(CodexUsageParser.parse(Data("not-json".utf8)))
+        XCTAssertNil(CodexUsageParser.parse(Data(#"{"id":2,"error":{"message":"x"}}"#.utf8)))
+    }
+}
+
+final class CodexLimitsProviderTests: XCTestCase {
+    private struct StubError: Error {}
+
+    private func jwtPlanOnly(_ plan: String) -> String {
+        let header = Data("{\"alg\":\"none\"}".utf8)
+            .base64EncodedString().replacingOccurrences(of: "=", with: "")
+        let body = Data("{\"https://api.openai.com/auth\":{\"chatgpt_plan_type\":\"\(plan)\"}}".utf8)
+        let bodyB64 = body.base64EncodedString().replacingOccurrences(of: "=", with: "")
+        return "\(header).\(bodyB64).sig"
+    }
+
+    private func authFile(_ token: String?) -> Data {
+        if let token {
+            return Data(#"{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":{"id_token":"\#(token)","access_token":null}}"#.utf8)
+        }
+        return Data(#"{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":null}"#.utf8)
+    }
+
+    func test_fetchPopulatesUsageFromAppServer() async throws {
+        let rateLimitsEnvelope = Data("""
+        {"id":2,"result":{"rateLimits":{"planType":"plus",
+          "primary":{"usedPercent":5,"windowDurationMins":300,"resetsAt":1783816559},
+          "secondary":{"usedPercent":42,"windowDurationMins":10080,"resetsAt":1784374937},
+          "credits":{"hasCredits":true,"unlimited":false,"balance":"3"},
+          "individualLimit":null,"rateLimitReachedType":null},
+          "rateLimitsByLimitId":{},"rateLimitResetCredits":{"availableCount":0}}}
+        """.utf8)
+        let provider = CodexLimitsProvider(
+            authFileURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in
+                self.authFile(self.jwtPlanOnly("plus"))
+            },
+            appServerReader: { rateLimitsEnvelope }
+        )
+        let status = await provider.fetch()
+        XCTAssertNil(status.providerError)
+        XCTAssertTrue(status.loggedIn)
+        let usage = try XCTUnwrap(status.usage)
+        let snap = try XCTUnwrap(usage.snapshot)
+        XCTAssertEqual(snap.planType, "plus")
+        XCTAssertEqual(try XCTUnwrap(snap.primary).usedPercent, 5, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(snap.secondary).usedPercent, 42, accuracy: 0.001)
+        XCTAssertEqual(snap.creditsBalance, "3")
+        XCTAssertNil(status.usageError)
+        // menuTitle использует planType из app-server.
+        XCTAssertEqual(status.menuTitle, "Codex: Plus")
+    }
+
+    func test_usageErrorWhenAppServerThrows() async {
+        let provider = CodexLimitsProvider(
+            authFileURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in
+                self.authFile(self.jwtPlanOnly("plus"))
+            },
+            appServerReader: { throw StubError() }
+        )
+        let status = await provider.fetch()
+        XCTAssertNil(status.providerError)
+        XCTAssertTrue(status.loggedIn)
+        XCTAssertNil(status.usage?.snapshot)
+        XCTAssertNotNil(status.usageError)
+        // JWT plan остаётся как fallback.
+        XCTAssertEqual(status.menuTitle, "Codex: Plus")
+    }
+
+    func test_usageErrorWhenAppServerReturnsNullRateLimits() async {
+        let envelope = Data("""
+        {"id":2,"result":{"rateLimits":null,"rateLimitsByLimitId":{},"rateLimitResetCredits":{"availableCount":0}}}
+        """.utf8)
+        let provider = CodexLimitsProvider(
+            authFileURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in self.authFile(self.jwtPlanOnly("free")) },
+            appServerReader: { envelope }
+        )
+        let status = await provider.fetch()
+        XCTAssertNil(status.providerError)
+        XCTAssertNil(status.usage?.snapshot)
+        XCTAssertNotNil(status.usageError)
+        XCTAssertEqual(status.menuTitle, "Codex: Free")
+    }
+
+    func test_providerErrorWhenAuthJSONMissing() async {
+        let provider = CodexLimitsProvider(
+            authFileURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in throw StubError() },
+            appServerReader: { Data(#"{"id":2,"result":{}}"#.utf8) }
+        )
+        let status = await provider.fetch()
+        XCTAssertNotNil(status.providerError)
+        XCTAssertFalse(status.loggedIn)
+        XCTAssertNil(status.usage)
+    }
+}
+
+final class DefaultCodexBinaryTests: XCTestCase {
+    func test_prefersExplicitCodexBinEnv() {
+        let path = ProcessRunner.defaultCodexBinary(
+            environment: ["CODEX_BIN": "/custom/path/codex", "HOME": "/Users/test"],
+            fileExists: { _ in false }
+        )
+        XCTAssertEqual(path, "/custom/path/codex")
+    }
+
+    func test_prefersLocalBinOverHomebrewWhenBothExist() {
+        let path = ProcessRunner.defaultCodexBinary(
+            environment: ["HOME": "/Users/test"],
+            fileExists: { _ in true }
+        )
+        XCTAssertEqual(path, "/Users/test/.local/bin/codex")
+    }
+
+    func test_fallsBackToLastCandidateWhenNoneExist() {
+        let path = ProcessRunner.defaultCodexBinary(
+            environment: ["HOME": "/Users/test"],
+            fileExists: { _ in false }
+        )
+        XCTAssertEqual(path, "/usr/local/bin/codex")
     }
 }

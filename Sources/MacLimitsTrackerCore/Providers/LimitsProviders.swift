@@ -101,15 +101,25 @@ public struct ClaudeLimitsProvider {
 public struct CodexLimitsProvider {
     let authFileURL: URL
     let fileReader: (URL) async throws -> Data
+    /// Выполняет init + `account/rateLimits/read` через `codex app-server`, возвращает
+    /// body JSON-RPC ответа (envelope) для `id=2` или кидает ошибку.
+    let appServerReader: () async throws -> Data
 
     public init(
         authFileURL: URL = FileManager.default
             .homeDirectoryForCurrentUser
             .appendingPathComponent(".codex/auth.json"),
-        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) }
+        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
+        appServerReader: (() async throws -> Data)? = nil
     ) {
         self.authFileURL = authFileURL
         self.fileReader = fileReader
+        if let reader = appServerReader {
+            self.appServerReader = reader
+        } else {
+            let bin = ProcessRunner.defaultCodexBinary()
+            self.appServerReader = { try await CodexAppServerRpc(codexBinary: bin).fetchRateLimits() }
+        }
     }
 
     public func fetch() async -> CodexStatus {
@@ -119,16 +129,20 @@ public struct CodexLimitsProvider {
             let file = try JSONDecoder().decode(CodexAuthFileJSON.self, from: data)
             let token = file.tokens?.idToken ?? file.tokens?.accessToken
             let loggedIn = (token != nil) && (file.authMode != nil)
-            if let token {
-                let claims = CodexClaimsParser.parse(token)
+
+            let (usage, usageError) = await fetchUsage()
+            let claims = token.map(CodexClaimsParser.parse)
+            if token != nil {
                 return CodexStatus(
                     loggedIn: loggedIn,
                     authMode: file.authMode,
-                    email: claims.email,
-                    planType: claims.planType,
-                    subscriptionActiveUntil: claims.subscriptionActiveUntil,
-                    daysUntilRenewal: CodexClaimsParser.daysUntilRenewal(from: claims),
-                    accountOwner: claims.accountOwner,
+                    email: claims?.email,
+                    planType: claims?.planType,
+                    subscriptionActiveUntil: claims?.subscriptionActiveUntil,
+                    daysUntilRenewal: claims.flatMap { CodexClaimsParser.daysUntilRenewal(from: $0) },
+                    accountOwner: claims?.accountOwner,
+                    usage: usage,
+                    usageError: usageError,
                     fetchedAt: now,
                     providerError: nil
                 )
@@ -138,7 +152,10 @@ public struct CodexLimitsProvider {
                 authMode: file.authMode,
                 email: nil, planType: nil,
                 subscriptionActiveUntil: nil, daysUntilRenewal: nil,
-                accountOwner: nil, fetchedAt: now,
+                accountOwner: nil,
+                usage: usage,
+                usageError: usageError,
+                fetchedAt: now,
                 providerError: "auth.json has no ChatGPT tokens"
             )
         } catch {
@@ -146,9 +163,27 @@ public struct CodexLimitsProvider {
                 loggedIn: false, authMode: nil,
                 email: nil, planType: nil,
                 subscriptionActiveUntil: nil, daysUntilRenewal: nil,
-                accountOwner: nil, fetchedAt: now,
+                accountOwner: nil,
+                usage: nil, usageError: nil,
+                fetchedAt: now,
                 providerError: "auth.json read failed: \(friendly(error))"
             )
+        }
+    }
+
+    /// `codex app-server` JSON-RPC. Независимо от JWT-секции: токен читается из
+    /// `~/.codex/auth.json` самим codex, от нас никакого пайплайна токенов. Ошибка — нефатально.
+    private func fetchUsage() async -> (CodexUsage?, String?) {
+        do {
+            let envelope = try await appServerReader()
+            if let snapshot = CodexUsageParser.parse(envelope) {
+                return (CodexUsage(snapshot: snapshot, error: nil), nil)
+            }
+            return (CodexUsage(snapshot: nil, error: "codex usage response unreadable"),
+                    "codex usage response unreadable")
+        } catch {
+            let msg = "codex app-server: \(friendly(error))"
+            return (CodexUsage(snapshot: nil, error: msg), msg)
         }
     }
 }
@@ -168,6 +203,23 @@ public enum ProcessRunner {
         return outData ?? Data()
     }
 
+    /// Ищет бинарь `codex` среди типичных мест установки. Зеркало `defaultClaudeBinary`.
+    public static func defaultCodexBinary(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> String {
+        if let p = environment["CODEX_BIN"], !p.isEmpty { return p }
+        let home = environment["HOME"]
+            ?? environment["USER"].map { "/Users/\($0)" }
+            ?? NSHomeDirectory()
+        let candidates = [
+            "\(home)/.local/bin/codex",
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex"
+        ]
+        return candidates.first(where: fileExists) ?? candidates.last!
+    }
+
     /// Ищет бинарь `claude` среди типичных мест установки. Первый существующий кандидат побеждает,
     /// иначе возвращается последний как разумный дефолт (даже если файла там нет).
     public static func defaultClaudeBinary(
@@ -184,6 +236,141 @@ public enum ProcessRunner {
             "/usr/local/bin/claude"
         ]
         return candidates.first(where: fileExists) ?? candidates.last!
+    }
+}
+
+/// JSON-RPC over stdio клиент к `codex app-server`.
+/// Init → `account/rateLimits/read`. Возвращает body ответа для `id=2` (одну newline-строку).
+/// Subprocess spawned-on-demand на каждый refresh и гасится по завершении операции.
+public final class CodexAppServerRpc {
+    let codexBinary: String
+
+    public init(codexBinary: String) {
+        self.codexBinary = codexBinary
+    }
+
+    public enum Error: Swift.Error {
+        case noResponseWithId(Int)
+        case spawnFailed(String)
+    }
+
+    public func fetchRateLimits() async throws -> Data {
+        let initReq = Self.makeEnvelope(method: "initialize", params: [
+            "protocolVersion": "2025-11-25",
+            "clientInfo": ["name": "mac-limits-tracker", "version": "0.1"],
+            "capabilities": [:]
+        ], id: 1)
+        let rateReq = Self.makeEnvelope(method: "account/rateLimits/read", params: [:], id: 2)
+        let stdinBytes = (initReq + "\n" + rateReq + "\n").data(using: .utf8) ?? Data()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: codexBinary)
+        process.arguments = ["app-server"]
+        let inPipe = Pipe()
+        let outPipe = Pipe()
+        process.standardInput = inPipe
+        process.standardOutput = outPipe
+        // stderr не читается — /dev/null не блокирует буфер.
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            throw Error.spawnFailed(friendly(error))
+        }
+
+        return try await withCheckedThrowingContinuation { cont in
+            let state = RpcCallState(inPipe: inPipe, outPipe: outPipe,
+                                     process: process, continuation: cont)
+
+            outPipe.fileHandleForReading.readabilityHandler = { fh in
+                state.handleReadable(fh.availableData)
+            }
+
+            inPipe.fileHandleForWriting.write(stdinBytes)
+
+            // Hard timeout 25s — backend ChatGPT/cloudflare может тормозить; не блокируем UI навсегда.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 25) {
+                state.fail(.noResponseWithId(2))
+            }
+        }
+    }
+
+    /// Потокобезопасное состояние одного RPC-вызова. `readabilityHandler` и таймаут приходят
+    /// с разных очередей, поэтому mutable-поля (`buffer`, `resolved`) под общим NSLock, а
+    /// continuation резолвится ровно один раз.
+    private final class RpcCallState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var buffer = Data()
+        private var resolved = false
+        private let inPipe: Pipe
+        private let outPipe: Pipe
+        private let process: Process
+        private let continuation: CheckedContinuation<Data, Swift.Error>
+
+        init(inPipe: Pipe, outPipe: Pipe, process: Process,
+             continuation: CheckedContinuation<Data, Swift.Error>) {
+            self.inPipe = inPipe
+            self.outPipe = outPipe
+            self.process = process
+            self.continuation = continuation
+        }
+
+        func handleReadable(_ chunk: Data) {
+            lock.lock()
+            if resolved { lock.unlock(); return }
+            if chunk.isEmpty {
+                lock.unlock()
+                // stdout EOF — server закрылся раньше id=2.
+                resolve(.failure(.noResponseWithId(2)))
+                return
+            }
+            buffer.append(chunk)
+            var outcome: Result<Data, Error>?
+            while let newlineRange = buffer.range(of: Data([0x0A])) {
+                let lineData = buffer.subdata(in: 0..<newlineRange.lowerBound)
+                buffer.removeSubrange(0..<newlineRange.upperBound)
+                guard !lineData.isEmpty,
+                      let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      obj["id"] as? Int == 2
+                else { continue }
+                if let err = obj["error"] as? [String: Any],
+                   let message = (err["message"] as? String) ?? (err["data"] as? String) {
+                    outcome = .failure(.spawnFailed(message))
+                } else {
+                    outcome = .success(lineData)
+                }
+                break
+            }
+            lock.unlock()
+            if let outcome { resolve(outcome) }
+        }
+
+        func fail(_ error: Error) {
+            resolve(.failure(error))
+        }
+
+        private func resolve(_ result: Result<Data, Error>) {
+            lock.lock()
+            if resolved { lock.unlock(); return }
+            resolved = true
+            lock.unlock()
+
+            outPipe.fileHandleForReading.readabilityHandler = nil
+            try? inPipe.fileHandleForWriting.close()
+            // Закрытие stdin обычно завершает app-server само; terminate() — страховка,
+            // чтобы на каждом обновлении не копились подвисшие процессы.
+            if process.isRunning { process.terminate() }
+            continuation.resume(with: result.mapError { $0 as Swift.Error })
+        }
+    }
+
+    private static func makeEnvelope(method: String, params: [String: Any], id: Int) -> String {
+        var envelope: [String: Any] = ["jsonrpc": "2.0", "method": method, "id": id]
+        envelope["params"] = params
+        guard let data = try? JSONSerialization.data(withJSONObject: envelope),
+              let s = String(data: data, encoding: .utf8) else { return "{}" }
+        return s
     }
 }
 

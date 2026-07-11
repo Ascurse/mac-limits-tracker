@@ -118,9 +118,38 @@ public struct StatusBarView: View {
                 if let e = x.providerError {
                     errorRow(e)
                 } else {
-                    detailRow("Plan", value(x.planType))
-                    detailRow("Auth", value(x.authMode))
-                    detailRow("Account", value(x.email))
+                    let plan = x.usage?.snapshot?.planType ?? x.planType
+                    detailRow("Plan", value(plan))
+                    if let snap = x.usage?.snapshot {
+                        if let fh = snap.primary {
+                            detailRow("5h remaining", codexRemaining(fh))
+                            detailRow("5h resets", codexReset(fh))
+                        } else {
+                            placeholder("5h usage unavailable")
+                        }
+                        if let wk = snap.secondary {
+                            detailRow("Weekly remaining", codexRemaining(wk))
+                            detailRow("Weekly resets", codexReset(wk))
+                        } else {
+                            placeholder("Weekly usage unavailable")
+                        }
+                        if let bal = snap.creditsBalance, !bal.isEmpty {
+                            detailRow("Credits", bal)
+                        }
+                        if let reached = snap.rateLimitReachedType {
+                            errorRow("rate limit reached: \(reached)")
+                        }
+                    } else if let ue = x.usageError {
+                        errorRow(ue)
+                    } else {
+                        placeholder("Loading usage…")
+                    }
+                    if let auth = x.authMode {
+                        detailRow("Auth", auth)
+                    }
+                    if let email = x.email {
+                        detailRow("Account", email)
+                    }
                     if let owner = x.accountOwner {
                         detailRow("Org", owner)
                     }
@@ -207,6 +236,16 @@ public struct StatusBarView: View {
     }
 
     private func resetText(_ w: ClaudeUsageWindow) -> String {
+        guard let r = w.resetsAt else { return "—" }
+        return Self.relativeFormatter.localizedString(for: r, relativeTo: Date())
+    }
+
+    // usedPercent — ИСПОЛЬЗОВАНО; остаётся = 100 − это (зеркало ClaudeUsageWindow).
+    private func codexRemaining(_ w: CodexUsageWindow) -> String {
+        String(format: "%.0f%%", max(0, 100 - w.usedPercent))
+    }
+
+    private func codexReset(_ w: CodexUsageWindow) -> String {
         guard let r = w.resetsAt else { return "—" }
         return Self.relativeFormatter.localizedString(for: r, relativeTo: Date())
     }
