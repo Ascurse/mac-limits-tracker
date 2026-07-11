@@ -189,11 +189,17 @@ final class ClaudeLimitsProviderTests: XCTestCase {
             claudeBinary: "/bin/does-not-matter",
             statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
             processRunner: { _, _ in throw StubError() },
-            fileReader: { _ in throw StubError() }
+            fileReader: { _ in throw StubError() },
+            keychainReader: { throw StubError() },
+            httpGet: { _, _ in throw StubError() }
         )
         let status = await provider.fetch()
         XCTAssertTrue(status.providerError?.contains("claude auth status failed") ?? false)
         XCTAssertTrue(status.providerError?.contains("stats cache read failed") ?? false)
+        // Failure keychain/usage должна попасть в usageError, а не в providerError.
+        XCTAssertNil(status.usage)
+        XCTAssertNotNil(status.usageError)
+        XCTAssertFalse(status.providerError?.contains("usage") ?? true)
     }
 
     func test_fetchReportsOnlyStatsCacheErrorWhenAuthSucceeds() async {
@@ -204,10 +210,142 @@ final class ClaudeLimitsProviderTests: XCTestCase {
             claudeBinary: "/bin/does-not-matter",
             statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
             processRunner: { _, _ in authJSON },
-            fileReader: { _ in throw StubError() }
+            fileReader: { _ in throw StubError() },
+            keychainReader: { throw StubError() },
+            httpGet: { _, _ in throw StubError() }
         )
         let status = await provider.fetch()
         XCTAssertTrue(status.providerError?.hasPrefix("stats cache read failed") ?? false)
         XCTAssertFalse(status.providerError?.contains("claude auth status failed") ?? true)
+        XCTAssertNotNil(status.usageError)
+    }
+
+    func test_fetchPopulatesUsageFromKeychainAndHttp() async throws {
+        let authJSON = Data(#"{"loggedIn": true}"#.utf8)
+        let credentialsJSON = Data("""
+        {"claudeAiOauth":{"accessToken":"tok-abc","expiresAt":9999999999999},"organizationUuid":"x"}
+        """.utf8)
+        let usageJSON = Data("""
+        {"five_hour":{"utilization":11.0,"resets_at":"2026-07-11T20:59:59.513044+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null},
+         "seven_day":{"utilization":22.0,"resets_at":"2026-07-16T05:59:59.513065+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null}}
+        """.utf8)
+        var requestedURL: URL?
+        var requestedBearer: String?
+        let provider = ClaudeLimitsProvider(
+            claudeBinary: "/bin/does-not-matter",
+            statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            processRunner: { _, _ in authJSON },
+            fileReader: { _ in Data(#"{"version":1,"dailyActivity":[],"dailyModelTokens":[]}"#.utf8) },
+            keychainReader: { credentialsJSON },
+            httpGet: { url, bearer in
+                requestedURL = url
+                requestedBearer = bearer
+                return usageJSON
+            }
+        )
+        let status = await provider.fetch()
+        XCTAssertNil(status.providerError)
+        let usage = try XCTUnwrap(status.usage)
+        let fiveHour = try XCTUnwrap(usage.fiveHour)
+        let sevenDay = try XCTUnwrap(usage.sevenDay)
+        XCTAssertEqual(fiveHour.utilizationPercent, 11.0, accuracy: 0.001)
+        XCTAssertEqual(sevenDay.utilizationPercent, 22.0, accuracy: 0.001)
+        XCTAssertNotNil(fiveHour.resetsAt)
+        XCTAssertNotNil(sevenDay.resetsAt)
+        XCTAssertEqual(requestedBearer, "tok-abc")
+        XCTAssertEqual(requestedURL?.absoluteString, "https://claude.ai/api/oauth/usage")
+        XCTAssertNil(status.usageError)
+    }
+
+    func test_usageErrorWhenTokenExpired() async {
+        let authJSON = Data(#"{"loggedIn": true}"#.utf8)
+        let expiredMS = Int64(Date().addingTimeInterval(-3600).timeIntervalSince1970 * 1000)
+        let credentialsJSON = Data("""
+        {"claudeAiOauth":{"accessToken":"tok-abc","expiresAt":\(expiredMS)}}
+        """.utf8)
+        var httpCalled = false
+        let provider = ClaudeLimitsProvider(
+            claudeBinary: "/bin/does-not-matter",
+            statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            processRunner: { _, _ in authJSON },
+            fileReader: { _ in Data(#"{"version":1,"dailyActivity":[],"dailyModelTokens":[]}"#.utf8) },
+            keychainReader: { credentialsJSON },
+            httpGet: { _, _ in httpCalled = true; return Data() }
+        )
+        let status = await provider.fetch()
+        XCTAssertNil(status.usage)
+        XCTAssertTrue(status.usageError?.contains("expired") ?? false)
+        XCTAssertFalse(httpCalled)
+    }
+
+    func test_usageErrorWhenKeychainMissing() async {
+        let authJSON = Data(#"{"loggedIn": true}"#.utf8)
+        let provider = ClaudeLimitsProvider(
+            claudeBinary: "/bin/does-not-matter",
+            statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            processRunner: { _, _ in authJSON },
+            fileReader: { _ in Data(#"{"version":1,"dailyActivity":[],"dailyModelTokens":[]}"#.utf8) },
+            keychainReader: { throw StubError() },
+            httpGet: { _, _ in throw StubError() }
+        )
+        let status = await provider.fetch()
+        XCTAssertNil(status.usage)
+        XCTAssertTrue(status.usageError?.contains("claude.ai") ?? false)
+    }
+}
+
+final class ClaudeUsageParserTests: XCTestCase {
+    func test_parsesFiveHourAndSevenDay() throws {
+        let json = Data("""
+        {"five_hour":{"utilization":11.0,"resets_at":"2026-07-11T20:59:59.513044+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null},
+         "seven_day":{"utilization":22.0,"resets_at":"2026-07-16T05:59:59.513065+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null}}
+        """.utf8)
+        let usage = try XCTUnwrap(ClaudeUsageParser.parse(json))
+        let fiveHour = try XCTUnwrap(usage.fiveHour)
+        let sevenDay = try XCTUnwrap(usage.sevenDay)
+        XCTAssertEqual(fiveHour.utilizationPercent, 11.0, accuracy: 0.001)
+        XCTAssertEqual(sevenDay.utilizationPercent, 22.0, accuracy: 0.001)
+        XCTAssertNotNil(fiveHour.resetsAt)
+        XCTAssertNotNil(sevenDay.resetsAt)
+        XCTAssertNil(fiveHour.limitDollars)
+    }
+
+    func test_handlesNullWindows() {
+        let usage = ClaudeUsageParser.parse(Data(#"{"five_hour":null,"seven_day":null}"#.utf8))
+        XCTAssertNotNil(usage)
+        XCTAssertNil(usage?.fiveHour)
+        XCTAssertNil(usage?.sevenDay)
+    }
+
+    func test_handlesEmptyObject() {
+        let usage = ClaudeUsageParser.parse(Data("{}".utf8))
+        XCTAssertNotNil(usage)
+        XCTAssertNil(usage?.fiveHour)
+        XCTAssertNil(usage?.sevenDay)
+    }
+
+    func test_returnsNilOnGarbage() {
+        XCTAssertNil(ClaudeUsageParser.parse(Data("not-json".utf8)))
+    }
+}
+
+final class ClaudeKeychainCredentialsParserTests: XCTestCase {
+    func test_parsesAccessTokenAndExpiry() throws {
+        let json = Data("""
+        {"claudeAiOauth":{"accessToken":"tok-abc","expiresAt":1783798118577,"refreshToken":"r","scopes":[]},"organizationUuid":"x"}
+        """.utf8)
+        let creds = try XCTUnwrap(ClaudeKeychainCredentialsParser.accessToken(json))
+        XCTAssertEqual(creds.token, "tok-abc")
+        let expected = Date(timeIntervalSince1970: 1783798118577.0 / 1000.0)
+        XCTAssertEqual(try XCTUnwrap(creds.expiresAt).timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func test_returnsNilWhenClaudeAiOauthMissing() {
+        let json = Data(#"{"mcpOAuth":{"x":1},"organizationUuid":"x"}"#.utf8)
+        XCTAssertNil(ClaudeKeychainCredentialsParser.accessToken(json))
+    }
+
+    func test_returnsNilOnGarbage() {
+        XCTAssertNil(ClaudeKeychainCredentialsParser.accessToken(Data("not-json".utf8)))
     }
 }
