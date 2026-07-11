@@ -43,4 +43,4 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 PLIST
 
 echo "Done: $APP_DIR"
-echo "Run with: open -a \"$APP_DIR\""
+echo "Run with: open \"$APP_DIR\""

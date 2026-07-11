@@ -48,7 +48,7 @@ This drops you into a SwiftUI `MenuBarExtra` immediately. The Dock icon is hidde
 ### Production `.app`
 ```bash
 ./make-app.sh
-open -a dist/MacLimitsTracker.app
+open dist/MacLimitsTracker.app
 ```
 `make-app.sh` runs `swift build -c release` and assembles `dist/MacLimitsTracker.app` with an `Info.plist` (`LSUIElement=true`, bundle id `dev.ascurse.MacLimitsTracker`).
 
