@@ -25,23 +25,23 @@ public struct ClaudeLimitsProvider {
         let now = Date()
         var auth: ClaudeAuthStatus?
         var stats: StatsCache?
-        var errorMessage: String?
+        var errors: [String] = []
 
         do {
             let data = try await processRunner(claudeBinary, ["auth", "status"])
             auth = ClaudeAuthParser.parse(data)
         } catch {
-            errorMessage = "claude auth status failed: \(friendly(error))"
+            errors.append("claude auth status failed: \(friendly(error))")
         }
 
         do {
             let data = try await fileReader(statsCacheURL)
             stats = try JSONDecoder().decode(StatsCache.self, from: data)
         } catch {
-            if errorMessage == nil {
-                errorMessage = "stats cache read failed: \(friendly(error))"
-            }
+            errors.append("stats cache read failed: \(friendly(error))")
         }
+
+        let errorMessage = errors.isEmpty ? nil : errors.joined(separator: "; ")
 
         let today = stats.flatMap { StatsCacheUsage.todayUsage(from: $0) }
         let latestDay = stats.flatMap { StatsCacheUsage.latestUsage(from: $0) }
@@ -126,19 +126,30 @@ public enum ProcessRunner {
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        // stderr не читается — направляем в /dev/null, чтобы заполненный буфер трубы не заблокировал дочерний процесс.
+        process.standardError = FileHandle.nullDevice
         try process.run()
         let outData = try pipe.fileHandleForReading.readToEnd()
         process.waitUntilExit()
         return outData ?? Data()
     }
 
-    public static func defaultClaudeBinary() -> String {
-        if let p = ProcessInfo.processInfo.environment["CLAUDE_BIN"], !p.isEmpty { return p }
-        if let user = ProcessInfo.processInfo.environment["USER"], !user.isEmpty {
-            return "/Users/\(user)/.local/bin/claude"
-        }
-        return "/usr/local/bin/claude"
+    /// Ищет бинарь `claude` среди типичных мест установки. Первый существующий кандидат побеждает,
+    /// иначе возвращается последний как разумный дефолт (даже если файла там нет).
+    public static func defaultClaudeBinary(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> String {
+        if let p = environment["CLAUDE_BIN"], !p.isEmpty { return p }
+        let home = environment["HOME"]
+            ?? environment["USER"].map { "/Users/\($0)" }
+            ?? NSHomeDirectory()
+        let candidates = [
+            "\(home)/.local/bin/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude"
+        ]
+        return candidates.first(where: fileExists) ?? candidates.last!
     }
 }
 

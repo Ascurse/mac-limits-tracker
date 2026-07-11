@@ -49,15 +49,26 @@ public struct StatusBarView: View {
         }
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
     private var latestUpdateText: String {
         let claudeFetched = viewModel.claude?.fetchedAt ?? .distantPast
         let codexFetched = viewModel.codex?.fetchedAt ?? .distantPast
         let latest = claudeFetched > codexFetched ? claudeFetched : codexFetched
         if latest == .distantPast { return "—" }
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return "Updated \(f.string(from: latest))"
+        return "Updated \(Self.timeFormatter.string(from: latest))"
     }
 
     private var claudeSection: some View {
@@ -177,9 +188,6 @@ public struct StatusBarView: View {
     }
 
     private func dateOnly(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f.string(from: d)
+        Self.dateFormatter.string(from: d)
     }
 }

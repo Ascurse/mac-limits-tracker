@@ -10,14 +10,15 @@ struct MacLimitsTrackerApp: App {
         MenuBarExtra {
             StatusBarView(viewModel: viewModel)
         } label: {
-            Image(systemName: viewModel.statusIcon)
-            Text(viewModel.statusTitle)
+            HStack {
+                Image(systemName: viewModel.statusIcon)
+                Text(viewModel.statusTitle)
+            }
+            // MenuBarExtra.content (попап) собирается лениво только при открытии — label рендерится
+            // сразу при запуске, поэтому именно здесь запускаем обновление данных.
+            .task { viewModel.start() }
         }
         .menuBarExtraStyle(.window)
-    }
-
-    init() {
-        viewModel.start()
     }
 }
 

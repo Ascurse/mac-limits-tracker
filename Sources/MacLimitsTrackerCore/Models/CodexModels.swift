@@ -45,14 +45,14 @@ struct CodexAuthFileJSON: Decodable {
     }
 }
 
-/// Заявки (claims) из JWT ChatGPT (без проверки подписи — только для чтения公开 метаданных).
+/// Заявки (claims) из JWT ChatGPT (без проверки подписи — только для чтения публичных метаданных).
 struct ChatGPTClaims: Equatable {
     let email: String?
     let planType: String?
     let subscriptionActiveUntil: Date?
     let accountOwner: String?
 
-    /// Извлекает payload JWT как JSON-словарь. Не проверяет подпись —索赔 только читаются.
+    /// Извлекает payload JWT как JSON-словарь. Не проверяет подпись — заявки только читаются.
     static func payload(of token: String) -> [String: Any]? {
         let parts = token.split(separator: ".")
         guard parts.count == 3 else { return nil }
@@ -69,7 +69,7 @@ struct ChatGPTClaims: Equatable {
     }
 }
 
-/// Претворяет(payload)claims с учётом поля `https://api.openai.com/auth` (вложенный объект).
+/// Разбирает payload claims с учётом поля `https://api.openai.com/auth` (вложенный объект).
 enum CodexClaimsParser {
     static let authClaimKey = "https://api.openai.com/auth"
 

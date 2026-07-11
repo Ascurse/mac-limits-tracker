@@ -146,3 +146,68 @@ private extension Data {
             .replacingOccurrences(of: "/", with: "_")
     }
 }
+
+final class DefaultClaudeBinaryTests: XCTestCase {
+    func test_prefersExplicitClaudeBinEnv() {
+        let path = ProcessRunner.defaultClaudeBinary(
+            environment: ["CLAUDE_BIN": "/custom/path/claude", "HOME": "/Users/test"],
+            fileExists: { _ in false }
+        )
+        XCTAssertEqual(path, "/custom/path/claude")
+    }
+
+    func test_picksFirstExistingCandidate() {
+        let path = ProcessRunner.defaultClaudeBinary(
+            environment: ["HOME": "/Users/test"],
+            fileExists: { $0 == "/opt/homebrew/bin/claude" }
+        )
+        XCTAssertEqual(path, "/opt/homebrew/bin/claude")
+    }
+
+    func test_prefersLocalBinOverHomebrewWhenBothExist() {
+        let path = ProcessRunner.defaultClaudeBinary(
+            environment: ["HOME": "/Users/test"],
+            fileExists: { _ in true }
+        )
+        XCTAssertEqual(path, "/Users/test/.local/bin/claude")
+    }
+
+    func test_fallsBackToLastCandidateWhenNoneExist() {
+        let path = ProcessRunner.defaultClaudeBinary(
+            environment: ["HOME": "/Users/test"],
+            fileExists: { _ in false }
+        )
+        XCTAssertEqual(path, "/usr/local/bin/claude")
+    }
+}
+
+final class ClaudeLimitsProviderTests: XCTestCase {
+    private struct StubError: Error {}
+
+    func test_fetchCombinesErrorsFromBothSourcesWhenBothFail() async {
+        let provider = ClaudeLimitsProvider(
+            claudeBinary: "/bin/does-not-matter",
+            statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            processRunner: { _, _ in throw StubError() },
+            fileReader: { _ in throw StubError() }
+        )
+        let status = await provider.fetch()
+        XCTAssertTrue(status.providerError?.contains("claude auth status failed") ?? false)
+        XCTAssertTrue(status.providerError?.contains("stats cache read failed") ?? false)
+    }
+
+    func test_fetchReportsOnlyStatsCacheErrorWhenAuthSucceeds() async {
+        let authJSON = Data("""
+        {"loggedIn": true}
+        """.utf8)
+        let provider = ClaudeLimitsProvider(
+            claudeBinary: "/bin/does-not-matter",
+            statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            processRunner: { _, _ in authJSON },
+            fileReader: { _ in throw StubError() }
+        )
+        let status = await provider.fetch()
+        XCTAssertTrue(status.providerError?.hasPrefix("stats cache read failed") ?? false)
+        XCTAssertFalse(status.providerError?.contains("claude auth status failed") ?? true)
+    }
+}
