@@ -349,3 +349,105 @@ final class ClaudeKeychainCredentialsParserTests: XCTestCase {
         XCTAssertNil(ClaudeKeychainCredentialsParser.accessToken(Data("not-json".utf8)))
     }
 }
+
+// MARK: - MenuBarDisplayModeTests
+
+final class MenuBarDisplayModeTests: XCTestCase {
+    private static let sentinel = Date(timeIntervalSince1970: 0)
+
+    private func makeClaudeStatus(
+        subscriptionType: String? = "max",
+        usage: ClaudeUsage? = nil
+    ) -> ClaudeStatus {
+        ClaudeStatus(
+            loggedIn: true,
+            authMethod: nil,
+            apiProvider: nil,
+            email: nil,
+            subscriptionType: subscriptionType,
+            orgName: nil,
+            today: nil,
+            latestDay: nil,
+            lastComputedDate: nil,
+            totalSessions: nil,
+            totalMessages: nil,
+            usage: usage,
+            usageError: nil,
+            fetchedAt: Self.sentinel,
+            providerError: nil
+        )
+    }
+
+    private func makeCodexStatus(
+        planType: String? = "plus"
+    ) -> CodexStatus {
+        CodexStatus(
+            loggedIn: true,
+            authMode: nil,
+            email: nil,
+            planType: planType,
+            subscriptionActiveUntil: nil,
+            daysUntilRenewal: nil,
+            accountOwner: nil,
+            fetchedAt: Self.sentinel,
+            providerError: nil
+        )
+    }
+
+    private func makeUsage(fiveHour: Double? = nil, sevenDay: Double? = nil) -> ClaudeUsage {
+        ClaudeUsage(
+            fiveHour: fiveHour.map { ClaudeUsageWindow(utilizationPercent: $0, resetsAt: nil,
+                                                       limitDollars: nil, usedDollars: nil,
+                                                       remainingDollars: nil) },
+            sevenDay: sevenDay.map { ClaudeUsageWindow(utilizationPercent: $0, resetsAt: nil,
+                                                       limitDollars: nil, usedDollars: nil,
+                                                       remainingDollars: nil) }
+        )
+    }
+
+    func test_iconAndText_showsPlanNames() {
+        let claude = makeClaudeStatus()
+        let codex = makeCodexStatus()
+        XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(claude: claude, codex: codex),
+                       "Claude: Max · Codex: Plus")
+    }
+
+    func test_iconAnd5h_showsPercentRemaining() {
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22))
+        let codex = makeCodexStatus()
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+                       "C 78% · X —")
+    }
+
+    func test_iconAnd5hWeekly_showsPercentAndWeekly() {
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22, sevenDay: 5))
+        let codex = makeCodexStatus()
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
+                       "C 5h 78% / 95% · X 5h — / —")
+    }
+
+    func test_iconOnly_returnsNil() {
+        XCTAssertNil(MenuBarDisplayMode.iconOnly.menuBarText(claude: makeClaudeStatus(),
+                                                             codex: makeCodexStatus()))
+    }
+
+    func test_claudeNil_showsDashes() {
+        let codex = makeCodexStatus()
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: nil, codex: codex),
+                       "C — · X —")
+    }
+
+    func test_fiveHourNil_showsDash() {
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: nil, sevenDay: 10))
+        let codex = makeCodexStatus()
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+                       "C — · X —")
+    }
+
+    func test_codexPlanFallsBackToCodex() {
+        let claude = makeClaudeStatus(subscriptionType: nil)
+        let codex = makeCodexStatus(planType: nil)
+        XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(claude: claude, codex: codex),
+                       "Claude: Claude · Codex: Codex")
+    }
+}

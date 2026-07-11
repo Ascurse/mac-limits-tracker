@@ -4,6 +4,7 @@ import MacLimitsTrackerCore
 /// Содержимое попапа статус-бара: две секции (Claude / Codex), футер с обновлением.
 public struct StatusBarView: View {
     @ObservedObject var viewModel: LimitsViewModel
+    @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
 
     public init(viewModel: LimitsViewModel) {
         self.viewModel = viewModel
@@ -137,20 +138,28 @@ public struct StatusBarView: View {
     }
 
     private var footer: some View {
-        HStack {
-            Toggle("Auto-refresh (5 min)", isOn: Binding(
-                get: { viewModel.autoRefresh },
-                set: { viewModel.setAutoRefresh($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            Spacer()
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
+        VStack(spacing: 8) {
+            Picker("Menu bar", selection: $displayMode) {
+                ForEach(MenuBarDisplayMode.allCases) { Text($0.title).tag($0) }
             }
-            .buttonStyle(.borderedProminent)
+            .pickerStyle(.menu)
             .controlSize(.mini)
-            .keyboardShortcut("q", modifiers: .command)
+
+            HStack {
+                Toggle("Auto-refresh (5 min)", isOn: Binding(
+                    get: { viewModel.autoRefresh },
+                    set: { viewModel.setAutoRefresh($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                Spacer()
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
+                .keyboardShortcut("q", modifiers: .command)
+            }
         }
     }
 
