@@ -68,3 +68,27 @@ public final class LimitsViewModel: ObservableObject {
         if value { startTimer() } else { timer?.invalidate(); timer = nil }
     }
 }
+
+extension LimitsViewModel {
+    public var statusTooltip: String {
+        var parts: [String] = []
+
+        let cPlan = claude?.menuTitle ?? "Claude"
+        parts.append(cPlan)
+        if let fh = claude?.usage?.fiveHour {
+            parts.append("5h \(Self.tooltipRemaining(fh.utilizationPercent))%")
+        }
+        if let wk = claude?.usage?.sevenDay {
+            parts.append("weekly \(Self.tooltipRemaining(wk.utilizationPercent))%")
+        }
+
+        let xPlan = codex?.menuTitle ?? "Codex"
+        parts.append(xPlan)
+
+        return parts.joined(separator: " · ")
+    }
+
+    private static func tooltipRemaining(_ utilizationPercent: Double) -> String {
+        String(format: "%.0f", max(0, 100 - utilizationPercent))
+    }
+}

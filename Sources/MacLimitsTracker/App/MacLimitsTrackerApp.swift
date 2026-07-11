@@ -5,17 +5,28 @@ import MacLimitsTrackerCore
 struct MacLimitsTrackerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var viewModel = LimitsViewModel()
+    @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
 
     var body: some Scene {
         MenuBarExtra {
             StatusBarView(viewModel: viewModel)
         } label: {
-            HStack {
-                Image(systemName: viewModel.statusIcon)
-                Text(viewModel.statusTitle)
+            Group {
+                if displayMode == .iconOnly {
+                    Image(systemName: viewModel.statusIcon)
+                } else if let text = displayMode.menuBarText(claude: viewModel.claude, codex: viewModel.codex) {
+                    HStack {
+                        Image(systemName: viewModel.statusIcon)
+                        Text(text).font(.caption).monospacedDigit()
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: viewModel.statusIcon)
+                        Text(viewModel.statusTitle)
+                    }
+                }
             }
-            // MenuBarExtra.content (попап) собирается лениво только при открытии — label рендерится
-            // сразу при запуске, поэтому именно здесь запускаем обновление данных.
+            .help(viewModel.statusTooltip)
             .task { viewModel.start() }
         }
         .menuBarExtraStyle(.window)
