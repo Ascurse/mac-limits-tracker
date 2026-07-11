@@ -9,16 +9,104 @@ public struct CodexStatus: Equatable {
     public let subscriptionActiveUntil: Date?
     public let daysUntilRenewal: Int?
     public let accountOwner: String?
+    /// Live rate-limits через `codex app-server` JSON-RPC `account/rateLimits/read`.
+    /// Нефатально: nil при недоступности app-server — секция не обнуляется, показывается usageError.
+    public let usage: CodexUsage?
+    public let usageError: String?
     public let fetchedAt: Date
     public let providerError: String?
 
     public var menuTitle: String {
         if providerError != nil { return "Codex: ?" }
         guard loggedIn else { return "Codex: —" }
-        if let plan = planType, !plan.isEmpty {
-            return "Codex: \(plan.capitalized)"
+        // Приоритет: app-server planType (актуальный) над JWT-claimом (может отстать при продлении).
+        let plan = usage?.snapshot?.planType ?? planType
+        if let p = plan, !p.isEmpty {
+            return "Codex: \(p.capitalized)"
         }
         return "Codex"
+    }
+}
+
+/// Одно окно rate-limit Codex. `usedPercent` — использовано (0…100);
+/// осталось = `100 − usedPercent` (инверсия, как у ClaudeUsageWindow).
+/// `primary` = 5h (`windowDurationMins: 300`), `secondary` = weekly (`10080`).
+public struct CodexUsageWindow: Equatable {
+    public let usedPercent: Double
+    public let windowDurationMins: Int?
+    public let resetsAt: Date?
+}
+
+/// Live snapshot rate-limits Codex из app-server `account/rateLimits/read`.
+public struct CodexUsageSnapshot: Equatable {
+    public let primary: CodexUsageWindow?
+    public let secondary: CodexUsageWindow?
+    public let planType: String?
+    public let creditsBalance: String?
+    public let rateLimitReachedType: String?
+}
+
+public struct CodexUsage: Equatable {
+    public let snapshot: CodexUsageSnapshot?
+    public let error: String?
+
+    public init(snapshot: CodexUsageSnapshot? = nil, error: String? = nil) {
+        self.snapshot = snapshot
+        self.error = error
+    }
+}
+
+/// Сырой JSON `result` ответа `account/rateLimits/read`. camelCase (без snake_case decoding).
+struct CodexUsageResponseJSON: Decodable {
+    struct Snapshot: Decodable {
+        struct Window: Decodable {
+            let usedPercent: Double?
+            let windowDurationMins: Int?
+            let resetsAt: Int64?
+        }
+        struct Credits: Decodable {
+            let hasCredits: Bool?
+            let unlimited: Bool?
+            let balance: String?
+        }
+        let primary: Window?
+        let secondary: Window?
+        let planType: String?
+        let credits: Credits?
+        let rateLimitReachedType: String?
+    }
+    let rateLimits: Snapshot?
+}
+
+/// Принимает body JSON-RPC envelope `{"id":N,"result":{...}}`, достаёт `.result.rateLimits`.
+enum CodexUsageParser {
+    static func parse(_ data: Data) -> CodexUsageSnapshot? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = obj["result"] as? [String: Any],
+              let resultData = try? JSONSerialization.data(withJSONObject: result) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        guard let resp = try? decoder.decode(CodexUsageResponseJSON.self, from: resultData),
+              let snapshot = resp.rateLimits else {
+            return nil
+        }
+        return CodexUsageSnapshot(
+            primary: snapshot.primary.map(parseWindow),
+            secondary: snapshot.secondary.map(parseWindow),
+            planType: snapshot.planType,
+            creditsBalance: snapshot.credits?.balance,
+            rateLimitReachedType: snapshot.rateLimitReachedType
+        )
+    }
+
+    private static func parseWindow(_ w: CodexUsageResponseJSON.Snapshot.Window) -> CodexUsageWindow {
+        let resetsAt = w.resetsAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        return CodexUsageWindow(
+            usedPercent: max(0, w.usedPercent ?? 0),
+            windowDurationMins: w.windowDurationMins,
+            resetsAt: resetsAt
+        )
     }
 }
 
