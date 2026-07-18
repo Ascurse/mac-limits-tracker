@@ -23,6 +23,10 @@ Both windows are the live, server-side rate-limit quotas, fetched from `GET http
 
 The status-bar tooltip shows `Claude: <plan> · Codex: <plan>` so you get the headline state without opening the popup.
 
+## Desktop widget
+
+Besides the menu-bar popup there is an optional always-on-desktop panel: enable **Desktop widget** in the popup footer. It floats at desktop level on all Spaces, shows the remaining 5h / weekly quotas for both providers as progress bars, can be dragged anywhere (position persists across restarts), and refreshes together with the menu-bar data.
+
 ## Data sources
 
 | Source             | What it reads                                                   | How                                                                          |
@@ -65,11 +69,14 @@ Sources/
     Models/ClaudeModels.swift
     Models/CodexModels.swift
     Providers/LimitsProviders.swift
+    Formatting/LimitsFormatting.swift
     LimitsViewModel.swift
   MacLimitsTracker/             # Executable: SwiftUI app shell
     App/MacLimitsTrackerApp.swift
     App/AppDelegate.swift
     UI/StatusBarView.swift
+    UI/DesktopWidgetView.swift
+    UI/DesktopWidgetController.swift
   VerifyCli/                    # CLI for ad-hoc provider debugging
 Tests/MacLimitsTrackerTests/    # Pure-logic unit tests (JWT, stats-cache, claims)
 make-app.sh                     # One-shot release build + bundle assembler

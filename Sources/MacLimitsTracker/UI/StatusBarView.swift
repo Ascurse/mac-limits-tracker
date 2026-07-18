@@ -4,10 +4,13 @@ import MacLimitsTrackerCore
 /// Содержимое попапа статус-бара: две секции (Claude / Codex), футер с обновлением.
 public struct StatusBarView: View {
     @ObservedObject var viewModel: LimitsViewModel
+    let desktopWidgetController: DesktopWidgetController
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
+    @AppStorage("showDesktopWidget") private var showDesktopWidget = false
 
-    public init(viewModel: LimitsViewModel) {
+    init(viewModel: LimitsViewModel, desktopWidgetController: DesktopWidgetController) {
         self.viewModel = viewModel
+        self.desktopWidgetController = desktopWidgetController
     }
 
     public var body: some View {
@@ -64,12 +67,6 @@ public struct StatusBarView: View {
         return f
     }()
 
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .full
-        return f
-    }()
-
     private var latestUpdateText: String {
         let claudeFetched = viewModel.claude?.fetchedAt ?? .distantPast
         let codexFetched = viewModel.codex?.fetchedAt ?? .distantPast
@@ -80,7 +77,21 @@ public struct StatusBarView: View {
 
     private var claudeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("Claude Code", color: .orange)
+            HStack(spacing: 6) {
+                Circle().fill(Color.orange).frame(width: 8, height: 8)
+                Text("Claude Code")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    openClaudeCode()
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help("Open Claude Code to refresh the claude.ai login")
+                .accessibilityLabel("Open Claude Code")
+            }
             if let c = viewModel.claude {
                 if let e = c.providerError {
                     errorRow(e)
@@ -182,6 +193,16 @@ public struct StatusBarView: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 Spacer()
+                Toggle("Desktop widget", isOn: $showDesktopWidget)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .onChange(of: showDesktopWidget) { _, newValue in
+                        desktopWidgetController.setVisible(newValue)
+                    }
+            }
+
+            HStack {
+                Spacer()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
                 }
@@ -230,27 +251,32 @@ public struct StatusBarView: View {
     private func value(_ s: String?) -> String { s ?? "—" }
 
     private func remainingText(_ w: ClaudeUsageWindow) -> String {
-        // utilization — использованная доля (0…100); осталось — разница.
-        let remaining = max(0, 100 - w.utilizationPercent)
-        return String(format: "%.0f%%", remaining)
+        LimitsFormatting.claudeRemainingText(w)
     }
 
     private func resetText(_ w: ClaudeUsageWindow) -> String {
-        guard let r = w.resetsAt else { return "—" }
-        return Self.relativeFormatter.localizedString(for: r, relativeTo: Date())
+        LimitsFormatting.resetText(resetsAt: w.resetsAt)
     }
 
-    // usedPercent — ИСПОЛЬЗОВАНО; остаётся = 100 − это (зеркало ClaudeUsageWindow).
     private func codexRemaining(_ w: CodexUsageWindow) -> String {
-        String(format: "%.0f%%", max(0, 100 - w.usedPercent))
+        LimitsFormatting.codexRemainingText(w)
     }
 
     private func codexReset(_ w: CodexUsageWindow) -> String {
-        guard let r = w.resetsAt else { return "—" }
-        return Self.relativeFormatter.localizedString(for: r, relativeTo: Date())
+        LimitsFormatting.resetText(resetsAt: w.resetsAt)
     }
 
     private func dateOnly(_ d: Date) -> String {
         Self.dateFormatter.string(from: d)
+    }
+
+    // Открывает Claude Code в Terminal: CLI при запуске сам обновляет OAuth-токен в Keychain.
+    private func openClaudeCode() {
+        let binary = ProcessRunner.defaultClaudeBinary()
+        let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        let config = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.open([URL(fileURLWithPath: binary)],
+                                withApplicationAt: terminal,
+                                configuration: config)
     }
 }

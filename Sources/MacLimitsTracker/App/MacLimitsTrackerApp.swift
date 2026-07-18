@@ -6,10 +6,18 @@ struct MacLimitsTrackerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var viewModel = LimitsViewModel()
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
+    @AppStorage("showDesktopWidget") private var showDesktopWidget = false
+    private let desktopWidgetController: DesktopWidgetController
+
+    init() {
+        let viewModel = LimitsViewModel()
+        _viewModel = StateObject(wrappedValue: viewModel)
+        desktopWidgetController = DesktopWidgetController(viewModel: viewModel)
+    }
 
     var body: some Scene {
         MenuBarExtra {
-            StatusBarView(viewModel: viewModel)
+            StatusBarView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
         } label: {
             Group {
                 if displayMode == .iconOnly {
@@ -27,7 +35,10 @@ struct MacLimitsTrackerApp: App {
                 }
             }
             .help(viewModel.statusTooltip)
-            .task { viewModel.start() }
+            .task {
+                viewModel.start()
+                desktopWidgetController.setVisible(showDesktopWidget)
+            }
         }
         .menuBarExtraStyle(.window)
     }
