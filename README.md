@@ -6,6 +6,22 @@ A macOS menu-bar app that shows the current Claude Code and Codex CLI plan / usa
 ![swift](https://img.shields.io/badge/swift-5.10%2B-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
+## Screenshots
+
+It lives as a gauge icon in the menu bar:
+
+<p align="center">
+  <img src="docs/images/menubar.png" alt="Menu-bar icon" width="380">
+</p>
+
+Clicking it opens the pop-up — both plans, live windows, and the display / auto-refresh controls:
+
+<p align="center">
+  <img src="docs/images/popup.png" alt="Pop-up showing Claude Code and Codex usage" width="340">
+</p>
+
+> The account e-mail is blurred in this screenshot only; the live pop-up shows it in full.
+
 ## What it shows
 
 Clicking the gauge icon in your menu bar opens a popup with two sections:
