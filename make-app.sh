@@ -9,10 +9,14 @@ OUT_DIR="${1:-$ROOT/dist}"
 APP_NAME="MacLimitsTracker"
 APP_DIR="$OUT_DIR/$APP_NAME.app"
 
-echo "Building release binary..."
-swift build -c release
-
-BIN_SRC="$ROOT/.build/release/$APP_NAME"
+# BIN_SRC можно передать извне (например, universal-бинарь из
+# `swift build -c release --arch arm64 --arch x86_64`, который лежит в
+# .build/apple/Products/Release). Иначе собираем обычный release.
+if [[ -z "${BIN_SRC:-}" ]]; then
+  echo "Building release binary..."
+  swift build -c release
+  BIN_SRC="$ROOT/.build/release/$APP_NAME"
+fi
 if [[ ! -x "$BIN_SRC" ]]; then
   echo "Build output not found at $BIN_SRC" >&2
   exit 1

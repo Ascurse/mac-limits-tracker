@@ -33,6 +33,18 @@ The status-bar tooltip shows `Claude: <plan> · Codex: <plan>` so you get the he
 
 The Claude.ai OAuth access token is read from the Keychain service `Claude Code-credentials` and sent **only** to `claude.ai` as an `Authorization: Bearer` header — it is never logged or persisted. For Codex, only the base64-decoded JWT **claims** are inspected (plan type, email, renewal date); the `access_token` is not read unless `id_token` is missing.
 
+## Install
+
+Download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The binary is universal (Apple Silicon + Intel).
+
+The app is **not signed with an Apple Developer certificate**, so on first launch Gatekeeper will block it. Either right-click the app → **Open** → **Open**, or remove the quarantine attribute:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MacLimitsTracker.app
+```
+
+Releases are built by GitHub Actions: pushing a `v*` tag (e.g. `v0.2.0`) builds the universal binary, assembles the `.app` and publishes a release with the zip attached.
+
 ## Build & run
 
 ### Requirements
