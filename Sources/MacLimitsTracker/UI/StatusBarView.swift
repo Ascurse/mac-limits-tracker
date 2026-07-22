@@ -1,12 +1,11 @@
 import SwiftUI
 import MacLimitsTrackerCore
 
-/// Содержимое попапа статус-бара: две секции (Claude / Codex), футер с обновлением.
+/// Корень попапа статус-бара. Публичная точка входа для App.
 public struct StatusBarView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let desktopWidgetController: DesktopWidgetController
-    @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
-    @AppStorage("showDesktopWidget") private var showDesktopWidget = false
+    @AppStorage("appTheme") private var theme: AppTheme = .system
 
     init(viewModel: LimitsViewModel, desktopWidgetController: DesktopWidgetController) {
         self.viewModel = viewModel
@@ -14,269 +13,18 @@ public struct StatusBarView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            Divider()
-            claudeSection
-            Divider()
-            codexSection
-            Divider()
-            footer
+        Group {
+            switch theme {
+            case .system:
+                SystemStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            case .terminal:
+                TerminalStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            case .phosphor:
+                PhosphorStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            case .tui:
+                TUIStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            }
         }
-        .padding(16)
-        .frame(minWidth: 320, idealWidth: 340)
         .accessibilityIdentifier("statusBarPopup")
-    }
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "gauge.with.dots.needle.bottom.50percent")
-                .font(.title3)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Limits Tracker")
-                    .font(.headline)
-                Text(latestUpdateText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button {
-                viewModel.refresh()
-            } label: {
-                Image(systemName: viewModel.isRefreshing
-                      ? "arrow.triangle.2.circlepath.circle"
-                      : "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-            .disabled(viewModel.isRefreshing)
-            .accessibilityLabel("Refresh")
-        }
-    }
-
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-
-    private var latestUpdateText: String {
-        let claudeFetched = viewModel.claude?.fetchedAt ?? .distantPast
-        let codexFetched = viewModel.codex?.fetchedAt ?? .distantPast
-        let latest = claudeFetched > codexFetched ? claudeFetched : codexFetched
-        if latest == .distantPast { return "—" }
-        return "Updated \(Self.timeFormatter.string(from: latest))"
-    }
-
-    private var claudeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Circle().fill(Color.orange).frame(width: 8, height: 8)
-                Text("Claude Code")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Spacer()
-                Button {
-                    openClaudeCode()
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                }
-                .buttonStyle(.borderless)
-                .help("Open Claude Code to refresh the claude.ai login")
-                .accessibilityLabel("Open Claude Code")
-            }
-            if let c = viewModel.claude {
-                if let e = c.providerError {
-                    errorRow(e)
-                } else {
-                    detailRow("Plan", value(c.subscriptionType))
-                    if let u = c.usage {
-                        if let fh = u.fiveHour {
-                            detailRow("5h remaining", remainingText(fh))
-                            detailRow("5h resets", resetText(fh))
-                        } else {
-                            placeholder("5h usage unavailable")
-                        }
-                        if let wk = u.sevenDay {
-                            detailRow("Weekly remaining", remainingText(wk))
-                            detailRow("Weekly resets", resetText(wk))
-                        } else {
-                            placeholder("Weekly usage unavailable")
-                        }
-                    } else if let ue = c.usageError {
-                        errorRow(ue)
-                    } else {
-                        placeholder("Loading usage…")
-                    }
-                }
-            } else {
-                placeholder("Loading…")
-            }
-        }
-    }
-
-    private var codexSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("Codex", color: .green)
-            if let x = viewModel.codex {
-                if let e = x.providerError {
-                    errorRow(e)
-                } else {
-                    let plan = x.usage?.snapshot?.planType ?? x.planType
-                    detailRow("Plan", value(plan))
-                    if let snap = x.usage?.snapshot {
-                        if let fh = snap.primary {
-                            detailRow("5h remaining", codexRemaining(fh))
-                            detailRow("5h resets", codexReset(fh))
-                        } else {
-                            placeholder("5h usage unavailable")
-                        }
-                        if let wk = snap.secondary {
-                            detailRow("Weekly remaining", codexRemaining(wk))
-                            detailRow("Weekly resets", codexReset(wk))
-                        } else {
-                            placeholder("Weekly usage unavailable")
-                        }
-                        if let bal = snap.creditsBalance, !bal.isEmpty {
-                            detailRow("Credits", bal)
-                        }
-                        if let reached = snap.rateLimitReachedType {
-                            errorRow("rate limit reached: \(reached)")
-                        }
-                    } else if let ue = x.usageError {
-                        errorRow(ue)
-                    } else {
-                        placeholder("Loading usage…")
-                    }
-                    if let auth = x.authMode {
-                        detailRow("Auth", auth)
-                    }
-                    if let email = x.email {
-                        detailRow("Account", email)
-                    }
-                    if let owner = x.accountOwner {
-                        detailRow("Org", owner)
-                    }
-                    if let days = x.daysUntilRenewal {
-                        detailRow("Renews in", "\(days) days")
-                    }
-                    if let until = x.subscriptionActiveUntil {
-                        detailRow("Renews", dateOnly(until))
-                    }
-                }
-            } else {
-                placeholder("Loading…")
-            }
-        }
-    }
-
-    private var footer: some View {
-        VStack(spacing: 8) {
-            Picker("Menu bar", selection: $displayMode) {
-                ForEach(MenuBarDisplayMode.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.menu)
-            .controlSize(.mini)
-
-            HStack {
-                Toggle("Auto-refresh (5 min)", isOn: Binding(
-                    get: { viewModel.autoRefresh },
-                    set: { viewModel.setAutoRefresh($0) }
-                ))
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                Spacer()
-                Toggle("Desktop widget", isOn: $showDesktopWidget)
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .onChange(of: showDesktopWidget) { _, newValue in
-                        desktopWidgetController.setVisible(newValue)
-                    }
-            }
-
-            HStack {
-                Spacer()
-                Button("Quit") {
-                    NSApplication.shared.terminate(nil)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.mini)
-                .keyboardShortcut("q", modifiers: .command)
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func sectionLabel(_ title: String, color: Color) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-            Spacer()
-        }
-    }
-
-    private func detailRow(_ key: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(key)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.caption.monospacedDigit())
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-    }
-
-    private func errorRow(_ message: String) -> some View {
-        Label(message, systemImage: "exclamationmark.triangle")
-            .font(.caption)
-            .foregroundStyle(.red)
-    }
-
-    private func placeholder(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(.secondary)
-    }
-
-    private func value(_ s: String?) -> String { s ?? "—" }
-
-    private func remainingText(_ w: ClaudeUsageWindow) -> String {
-        LimitsFormatting.claudeRemainingText(w)
-    }
-
-    private func resetText(_ w: ClaudeUsageWindow) -> String {
-        LimitsFormatting.resetText(resetsAt: w.resetsAt)
-    }
-
-    private func codexRemaining(_ w: CodexUsageWindow) -> String {
-        LimitsFormatting.codexRemainingText(w)
-    }
-
-    private func codexReset(_ w: CodexUsageWindow) -> String {
-        LimitsFormatting.resetText(resetsAt: w.resetsAt)
-    }
-
-    private func dateOnly(_ d: Date) -> String {
-        Self.dateFormatter.string(from: d)
-    }
-
-    // Открывает Claude Code в Terminal: CLI при запуске сам обновляет OAuth-токен в Keychain.
-    private func openClaudeCode() {
-        let binary = ProcessRunner.defaultClaudeBinary()
-        let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
-        let config = NSWorkspace.OpenConfiguration()
-        NSWorkspace.shared.open([URL(fileURLWithPath: binary)],
-                                withApplicationAt: terminal,
-                                configuration: config)
     }
 }

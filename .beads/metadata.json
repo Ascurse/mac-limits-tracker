@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "mac_limits_tracker",
+  "project_id": "5f34b7fd-dd3a-4b8a-aa49-71fd269ee9a8"
+}
