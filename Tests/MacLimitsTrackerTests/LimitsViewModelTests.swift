@@ -112,6 +112,22 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         XCTAssertEqual(vm2.states.map(\.descriptor.id), ["codex", "claude"])
     }
 
+    func test_providerSettingsWithDescriptors_includesDisabledProvidersInOrder() {
+        let store = ProviderSettingsStore(defaults: defaults)
+        store.save([
+            ProviderSetting(id: "codex", isEnabled: false),
+            ProviderSetting(id: "claude", isEnabled: true)
+        ])
+        let vm = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
+            settingsStore: store
+        )
+        let entries = vm.providerSettingsWithDescriptors
+        XCTAssertEqual(entries.map(\.setting.id), ["codex", "claude"])
+        XCTAssertEqual(entries.map(\.setting.isEnabled), [false, true])
+        XCTAssertEqual(entries.map(\.descriptor.displayName), ["codex", "claude"])
+    }
+
     func test_reenablingProvider_appearsAtItsSavedPosition() {
         let store = ProviderSettingsStore(defaults: defaults)
         let vm = LimitsViewModel(

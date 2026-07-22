@@ -89,6 +89,15 @@ public final class LimitsViewModel: ObservableObject {
         }
     }
 
+    /// Настройки провайдеров вместе с дескрипторами (включая выключенных) — для
+    /// UI настроек: чекбокс включения + порядок отображения.
+    public var providerSettingsWithDescriptors: [(setting: ProviderSetting, descriptor: ProviderDescriptor)] {
+        let byId = Dictionary(uniqueKeysWithValues: allProviders.map { ($0.descriptor.id, $0.descriptor) })
+        return providerSettings.compactMap { setting in
+            byId[setting.id].map { (setting, $0) }
+        }
+    }
+
     public func setAutoRefresh(_ value: Bool) {
         autoRefresh = value
         if value { startTimer() } else { timer?.invalidate(); timer = nil }
