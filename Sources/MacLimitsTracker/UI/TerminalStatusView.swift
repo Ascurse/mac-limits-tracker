@@ -74,7 +74,7 @@ struct TerminalStatusView: View {
                     }
                     .buttonStyle(.borderless)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open Claude Code")
+                    .accessibilityLabel("Open \(s.title)")
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in

@@ -82,7 +82,7 @@ struct PhosphorStatusView: View {
                     }
                     .buttonStyle(.plain)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open Claude Code")
+                    .accessibilityLabel("Open \(s.title)")
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in

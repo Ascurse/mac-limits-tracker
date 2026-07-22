@@ -2,8 +2,11 @@ import Foundation
 import Security
 
 /// Источник данных о лимитах Claude Code.
-/// `@unchecked Sendable`: замыкания-зависимости не самостоятельно Sendable, но структура
-/// иммутабельна после `init` и вызывается только через `fetch()` — гонок по состоянию нет.
+/// `@unchecked Sendable`: замыкания-зависимости сами по себе не Sendable, но в проде они
+/// (`ProcessRunner.run`, `KeychainStore.readClaudeCodeCredentials`, `Http.httpGet`) без
+/// состояния и безопасны при повторных/параллельных вызовах. DI-замыкания в тестах, которые
+/// пишут в захваченные `var`, полагаются на то, что тест не гоняет `fetch()` параллельно с
+/// самим собой — если такое понадобится, нужен другой примитив, не просто эта аннотация.
 public struct ClaudeLimitsProvider: @unchecked Sendable {
     let claudeBinary: String
     let statsCacheURL: URL

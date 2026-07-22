@@ -88,7 +88,7 @@ struct TUIStatusView: View {
                     }
                     .buttonStyle(.plain)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open Claude Code")
+                    .accessibilityLabel("Open \(s.title)")
                 }
             }
             .padding(.horizontal, 4)

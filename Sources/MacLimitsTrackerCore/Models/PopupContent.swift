@@ -65,41 +65,37 @@ public enum PopupContentBuilder {
     /// `claudeSection`/`codexSection`: у Claude просто нет details/credits/renewal
     /// (мапперы оставляют эти поля snapshot'а пустыми).
     public static func section(_ state: ProviderState, now: Date = Date()) -> ProviderSectionContent {
-        var rows: [PopupRow] = []
-        guard let snap = state.snapshot else {
-            rows.append(.note("Loading…"))
-            return ProviderSectionContent(descriptor: state.descriptor,
-                                          title: state.descriptor.displayName, rows: rows)
+        ProviderSectionContent(descriptor: state.descriptor,
+                               title: state.descriptor.displayName,
+                               rows: rows(for: state.snapshot, now: now))
+    }
+
+    private static func rows(for snapshot: LimitsSnapshot?, now: Date) -> [PopupRow] {
+        guard let snap = snapshot else { return [.note("Loading…")] }
+        if let e = snap.providerError { return [.error(e)] }
+
+        var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
+        rows.append(contentsOf: usageRows(snap, now: now))
+        rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
+        rows.append(contentsOf: renewalRows(snap, now: now))
+        return rows
+    }
+
+    /// Окна + кредиты + ошибка rate-limit; либо usageError, либо «Loading usage…»,
+    /// если usage ещё не загружен.
+    private static func usageRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {
+        guard let windows = snap.windows else {
+            if let ue = snap.usageError { return [.error(ue)] }
+            return [.note("Loading usage…")]
         }
-        if let e = snap.providerError {
-            rows.append(.error(e))
-        } else {
-            rows.append(.detail(key: "Plan", value: snap.plan ?? "—"))
-            if let windows = snap.windows {
-                rows.append(contentsOf: windowRows(windows, now: now))
-                if let bal = snap.creditsBalance, !bal.isEmpty {
-                    rows.append(.detail(key: "Credits", value: bal))
-                }
-                if let reached = snap.rateLimitReachedType {
-                    rows.append(.error("rate limit reached: \(reached)"))
-                }
-            } else if let ue = snap.usageError {
-                rows.append(.error(ue))
-            } else {
-                rows.append(.note("Loading usage…"))
-            }
-            for d in snap.details {
-                rows.append(.detail(key: d.key, value: d.value))
-            }
-            if let days = snap.daysUntilRenewal {
-                rows.append(.detail(key: "Renews in", value: "\(days) days"))
-            }
-            if let until = snap.renewalDate, until > now {
-                rows.append(.detail(key: "Renews", value: dateFormatter.string(from: until)))
-            }
+        var rows = windowRows(windows, now: now)
+        if let bal = snap.creditsBalance, !bal.isEmpty {
+            rows.append(.detail(key: "Credits", value: bal))
         }
-        return ProviderSectionContent(descriptor: state.descriptor,
-                                      title: state.descriptor.displayName, rows: rows)
+        if let reached = snap.rateLimitReachedType {
+            rows.append(.error("rate limit reached: \(reached)"))
+        }
+        return rows
     }
 
     /// Окна снапшота в уже заданном мапперами порядке; `usedPercent == nil` — слот
@@ -112,6 +108,17 @@ public enum PopupContentBuilder {
                              resetsAt: w.resetsAt, now: now,
                              unavailable: "\(labels.long) usage unavailable")
         }
+    }
+
+    private static func renewalRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {
+        var rows: [PopupRow] = []
+        if let days = snap.daysUntilRenewal {
+            rows.append(.detail(key: "Renews in", value: "\(days) days"))
+        }
+        if let until = snap.renewalDate, until > now {
+            rows.append(.detail(key: "Renews", value: dateFormatter.string(from: until)))
+        }
+        return rows
     }
 
     public static func updatedText(states: [ProviderState]) -> String {

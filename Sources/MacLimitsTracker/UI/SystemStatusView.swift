@@ -87,7 +87,7 @@ struct SystemStatusView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(loginHelp.helpText)
-                .accessibilityLabel("Open Claude Code")
+                .accessibilityLabel("Open \(title)")
             }
         }
     }
