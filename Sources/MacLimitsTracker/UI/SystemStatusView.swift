@@ -9,10 +9,10 @@ struct SystemStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            Divider()
-            section(PopupContentBuilder.claudeSection(viewModel.claude))
-            Divider()
-            section(PopupContentBuilder.codexSection(viewModel.codex))
+            ForEach(viewModel.states) { state in
+                Divider()
+                section(PopupContentBuilder.section(state))
+            }
             Divider()
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
         }
@@ -27,7 +27,7 @@ struct SystemStatusView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Limits Tracker")
                     .font(.headline)
-                Text(PopupContentBuilder.updatedText(claude: viewModel.claude, codex: viewModel.codex))
+                Text(PopupContentBuilder.updatedText(states: viewModel.states))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -47,8 +47,8 @@ struct SystemStatusView: View {
 
     private func section(_ s: ProviderSectionContent) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel(s.title, color: s.provider == .claude ? .orange : .green,
-                         showOpenClaude: s.provider == .claude)
+            sectionLabel(s.title, color: Color(hex: s.descriptor.accentColorHex),
+                         loginHelp: s.descriptor.loginHelp)
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row)
             }
@@ -72,21 +72,21 @@ struct SystemStatusView: View {
         }
     }
 
-    private func sectionLabel(_ title: String, color: Color, showOpenClaude: Bool) -> some View {
+    private func sectionLabel(_ title: String, color: Color, loginHelp: LoginHelp?) -> some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
             Spacer()
-            if showOpenClaude {
+            if let loginHelp {
                 Button {
-                    openClaudeCode()
+                    openProviderCLI(loginHelp)
                 } label: {
                     Image(systemName: "arrow.up.forward.app")
                 }
                 .buttonStyle(.borderless)
-                .help("Open Claude Code to refresh the claude.ai login")
+                .help(loginHelp.helpText)
                 .accessibilityLabel("Open Claude Code")
             }
         }

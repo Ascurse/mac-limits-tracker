@@ -1,44 +1,33 @@
 import Foundation
 
 /// Данные о лимитах Claude Code, собранные из локального состояния подписки и кеша статистики.
-public struct ClaudeStatus: Equatable {
-    public let loggedIn: Bool
-    public let authMethod: String?
-    public let apiProvider: String?
-    public let email: String?
-    public let subscriptionType: String?
-    public let orgName: String?
-    public let today: DayUsage?
-    public let latestDay: DayUsage?
-    public let lastComputedDate: String?
-    public let totalSessions: Int?
-    public let totalMessages: Int?
+/// Внутренний DTO шага `fetch()` — публично наружу уходит только `LimitsSnapshot` (см. `toSnapshot()`).
+struct ClaudeStatus: Equatable {
+    let loggedIn: Bool
+    let authMethod: String?
+    let apiProvider: String?
+    let email: String?
+    let subscriptionType: String?
+    let orgName: String?
+    let today: DayUsage?
+    let latestDay: DayUsage?
+    let lastComputedDate: String?
+    let totalSessions: Int?
+    let totalMessages: Int?
     /// Live-утилизация из `/api/oauth/usage`: 5-часовое окно и недельный лимит.
-    public let usage: ClaudeUsage?
+    let usage: ClaudeUsage?
     /// Нефатальная ошибка получения usage (токен истёк / нет ключницы): попадает
     /// в секцию Claude отдельным рядом, не обнуляя всю секцию.
-    public let usageError: String?
-    public let fetchedAt: Date
-    public let providerError: String?
+    let usageError: String?
+    let fetchedAt: Date
+    let providerError: String?
 
-    public struct DayUsage: Equatable {
-        public let date: String
-        public let messageCount: Int
-        public let sessionCount: Int
-        public let toolCallCount: Int
-        public let tokens: Int
-    }
-}
-
-extension ClaudeStatus {
-    /// Удобный заголовок для меню: тип подписки или статус.
-    public var menuTitle: String {
-        if providerError != nil { return "Claude: ?" }
-        guard loggedIn else { return "Claude: —" }
-        if let sub = subscriptionType, !sub.isEmpty {
-            return "Claude: \(sub.capitalized)"
-        }
-        return "Claude"
+    struct DayUsage: Equatable {
+        let date: String
+        let messageCount: Int
+        let sessionCount: Int
+        let toolCallCount: Int
+        let tokens: Int
     }
 }
 

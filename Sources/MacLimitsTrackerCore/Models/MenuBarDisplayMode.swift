@@ -20,35 +20,46 @@ public enum MenuBarDisplayMode: String, CaseIterable, Identifiable {
 
     public var showsText: Bool { self != .iconOnly }
 
-    public func menuBarText(claude: ClaudeStatus?, codex: CodexStatus?) -> String? {
+    public func menuBarText(states: [ProviderState]) -> String? {
         guard showsText else { return nil }
-
-        let claudePlan = claude?.subscriptionType?.capitalized ?? claude?.menuTitle.replacingOccurrences(of: "Claude: ", with: "") ?? "Claude"
-        let codexPlan = codex?.planType?.capitalized ?? codex?.menuTitle.replacingOccurrences(of: "Codex: ", with: "") ?? "Codex"
 
         switch self {
         case .iconAndText:
-            return "Claude: \(claudePlan) · Codex: \(codexPlan)"
+            return states.map { "\($0.descriptor.shortName): \(Self.planText(for: $0))" }
+                .joined(separator: " · ")
 
         case .iconAnd5h:
-            let c = Self.formatRemaining(claude?.usage?.fiveHour?.utilizationPercent)
-            let x = Self.formatRemaining(codex?.usage?.snapshot?.fiveHourWindow?.usedPercent)
-            return "C \(c) · X \(x)"
+            return states.map { state in
+                let w = state.snapshot?.windows?.first { $0.windowDurationMins == 300 }
+                return "\(state.descriptor.menuBarSymbol) \(Self.formatRemaining(w?.usedPercent))"
+            }.joined(separator: " · ")
 
         case .iconAnd5hWeekly:
-            let c5 = Self.formatRemaining(claude?.usage?.fiveHour?.utilizationPercent)
-            let cW = Self.formatRemaining(claude?.usage?.sevenDay?.utilizationPercent)
-            let x5 = Self.formatRemaining(codex?.usage?.snapshot?.fiveHourWindow?.usedPercent)
-            let xW = Self.formatRemaining(codex?.usage?.snapshot?.weeklyWindow?.usedPercent)
-            return "C 5h \(c5) / \(cW) · X 5h \(x5) / \(xW)"
+            return states.map { state in
+                let w5 = state.snapshot?.windows?.first { $0.windowDurationMins == 300 }
+                let wWk = state.snapshot?.windows?.first { $0.windowDurationMins == 10080 }
+                let symbol = state.descriptor.menuBarSymbol
+                return "\(symbol) 5h \(Self.formatRemaining(w5?.usedPercent)) / \(Self.formatRemaining(wWk?.usedPercent))"
+            }.joined(separator: " · ")
 
         case .iconOnly:
             return nil
         }
     }
 
-    private static func formatRemaining(_ utilizationPercent: Double?) -> String {
-        guard let p = utilizationPercent else { return "—" }
+    /// Сырой план приоритетнее `menuTitle` (уже live-first для Codex — см. `toSnapshot()`);
+    /// при его отсутствии — `menuTitle` без префикса `"{shortName}: "` (учитывает
+    /// providerError/loggedIn), иначе просто `shortName`.
+    private static func planText(for state: ProviderState) -> String {
+        guard let snap = state.snapshot else { return state.descriptor.shortName }
+        if let plan = snap.plan, !plan.isEmpty { return plan.capitalized }
+        let prefix = "\(state.descriptor.shortName): "
+        return snap.menuTitle(shortName: state.descriptor.shortName)
+            .replacingOccurrences(of: prefix, with: "")
+    }
+
+    private static func formatRemaining(_ usedPercent: Double?) -> String {
+        guard let p = usedPercent else { return "—" }
         return String(format: "%.0f%%", max(0, 100 - p))
     }
 }

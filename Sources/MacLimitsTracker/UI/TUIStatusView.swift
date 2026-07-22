@@ -21,8 +21,9 @@ struct TUIStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            panel(PopupContentBuilder.claudeSection(viewModel.claude), showOpenClaude: true)
-            panel(PopupContentBuilder.codexSection(viewModel.codex))
+            ForEach(viewModel.states) { state in
+                panel(PopupContentBuilder.section(state))
+            }
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.normal)
         }
@@ -36,7 +37,7 @@ struct TUIStatusView: View {
 
     private var header: some View {
         HStack {
-            Text(PopupContentBuilder.updatedText(claude: viewModel.claude, codex: viewModel.codex))
+            Text(PopupContentBuilder.updatedText(states: viewModel.states))
                 .foregroundStyle(Palette.dim)
             Spacer()
             Button {
@@ -60,7 +61,7 @@ struct TUIStatusView: View {
 
     // Панель с рамкой; заголовок врезан в верхнюю кромку — рамку рисуем
     // SwiftUI-обводкой, не символами (символьные рамки «плывут» по ширине).
-    private func panel(_ s: ProviderSectionContent, showOpenClaude: Bool = false) -> some View {
+    private func panel(_ s: ProviderSectionContent) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row)
@@ -79,14 +80,14 @@ struct TUIStatusView: View {
                 if case .detail(let key, let value) = s.rows.first, key == "Plan" {
                     Text("─ \(value)").foregroundStyle(Palette.dim)
                 }
-                if showOpenClaude {
+                if let loginHelp = s.descriptor.loginHelp {
                     Button {
-                        openClaudeCode()
+                        openProviderCLI(loginHelp)
                     } label: {
                         Text("[open]")
                     }
                     .buttonStyle(.plain)
-                    .help("Open Claude Code to refresh the claude.ai login")
+                    .help(loginHelp.helpText)
                     .accessibilityLabel("Open Claude Code")
                 }
             }

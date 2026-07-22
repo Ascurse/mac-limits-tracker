@@ -13,12 +13,11 @@ extension Color {
     }
 }
 
-/// Открывает Claude Code в Terminal: CLI при запуске сам обновляет OAuth-токен в Keychain.
-func openClaudeCode() {
-    let binary = ProcessRunner.defaultClaudeBinary()
+/// Открывает CLI провайдера в Terminal: CLI при запуске сам обновляет OAuth-токен в Keychain.
+func openProviderCLI(_ help: LoginHelp) {
     let terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
     let config = NSWorkspace.OpenConfiguration()
-    NSWorkspace.shared.open([URL(fileURLWithPath: binary)],
+    NSWorkspace.shared.open([URL(fileURLWithPath: help.binaryPath)],
                             withApplicationAt: terminal,
                             configuration: config)
 }

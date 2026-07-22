@@ -1,31 +1,21 @@
 import Foundation
 
 /// Данные о лимитах Codex, собранные из `~/.codex/auth.json` (декод JWT, без печати токенов).
-public struct CodexStatus: Equatable {
-    public let loggedIn: Bool
-    public let authMode: String?
-    public let email: String?
-    public let planType: String?
-    public let subscriptionActiveUntil: Date?
-    public let daysUntilRenewal: Int?
-    public let accountOwner: String?
+/// Внутренний DTO шага `fetch()` — публично наружу уходит только `LimitsSnapshot` (см. `toSnapshot()`).
+struct CodexStatus: Equatable {
+    let loggedIn: Bool
+    let authMode: String?
+    let email: String?
+    let planType: String?
+    let subscriptionActiveUntil: Date?
+    let daysUntilRenewal: Int?
+    let accountOwner: String?
     /// Live rate-limits через `codex app-server` JSON-RPC `account/rateLimits/read`.
     /// Нефатально: nil при недоступности app-server — секция не обнуляется, показывается usageError.
-    public let usage: CodexUsage?
-    public let usageError: String?
-    public let fetchedAt: Date
-    public let providerError: String?
-
-    public var menuTitle: String {
-        if providerError != nil { return "Codex: ?" }
-        guard loggedIn else { return "Codex: —" }
-        // Приоритет: app-server planType (актуальный) над JWT-claimом (может отстать при продлении).
-        let plan = usage?.snapshot?.planType ?? planType
-        if let p = plan, !p.isEmpty {
-            return "Codex: \(p.capitalized)"
-        }
-        return "Codex"
-    }
+    let usage: CodexUsage?
+    let usageError: String?
+    let fetchedAt: Date
+    let providerError: String?
 }
 
 /// Одно окно rate-limit Codex. `usedPercent` — использовано (0…100);

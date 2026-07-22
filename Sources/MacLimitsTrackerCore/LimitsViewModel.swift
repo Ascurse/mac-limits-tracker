@@ -1,26 +1,23 @@
 import Foundation
 import SwiftUI
 
-/// Состояние статус-бара: агрегирует данные по обоим провайдерам, таймер автообновления.
+/// Состояние статус-бара: агрегирует состояния зарегистрированных провайдеров, таймер автообновления.
 @MainActor
 public final class LimitsViewModel: ObservableObject {
-    @Published public var claude: ClaudeStatus?
-    @Published public var codex: CodexStatus?
+    @Published public private(set) var states: [ProviderState]
     @Published public var isRefreshing = false
     @Published public var autoRefresh = true
 
-    private let claudeProvider: ClaudeLimitsProvider
-    private let codexProvider: CodexLimitsProvider
+    private let providers: [any LimitsProvider]
     private var refreshTask: Task<Void, Never>?
     private var timer: Timer?
 
     public init(
-        claudeProvider: ClaudeLimitsProvider = ClaudeLimitsProvider(),
-        codexProvider: CodexLimitsProvider = CodexLimitsProvider(),
+        providers: [any LimitsProvider] = ProviderRegistry.makeDefault(),
         autoRefreshInterval: TimeInterval = 300
     ) {
-        self.claudeProvider = claudeProvider
-        self.codexProvider = codexProvider
+        self.providers = providers
+        self.states = providers.map { ProviderState(descriptor: $0.descriptor, snapshot: nil) }
         self.autoRefreshInterval = autoRefreshInterval
     }
 
@@ -38,19 +35,32 @@ public final class LimitsViewModel: ObservableObject {
 
     public func refresh() {
         refreshTask?.cancel()
-        let claude = claudeProvider
-        let codex = codexProvider
+        let providers = self.providers
         isRefreshing = true
         refreshTask = Task { [weak self] in
-            async let c = claude.fetch()
-            async let x = codex.fetch()
-            let (claudeStatus, codexStatus) = await (c, x)
+            let snapshots = await Self.fetchAll(providers)
             if Task.isCancelled { return }
             await MainActor.run {
-                self?.claude = claudeStatus
-                self?.codex = codexStatus
-                self?.isRefreshing = false
+                guard let self else { return }
+                self.states = zip(providers, snapshots).map { provider, snapshot in
+                    ProviderState(descriptor: provider.descriptor, snapshot: snapshot)
+                }
+                self.isRefreshing = false
             }
+        }
+    }
+
+    /// Параллельный fetch всех провайдеров реестра, результат — в порядке `providers`.
+    private static func fetchAll(_ providers: [any LimitsProvider]) async -> [LimitsSnapshot] {
+        await withTaskGroup(of: (Int, LimitsSnapshot).self) { group in
+            for (index, provider) in providers.enumerated() {
+                group.addTask { (index, await provider.fetch()) }
+            }
+            var results = [LimitsSnapshot?](repeating: nil, count: providers.count)
+            for await (index, snapshot) in group {
+                results[index] = snapshot
+            }
+            return results.compactMap { $0 }
         }
     }
 
@@ -70,25 +80,23 @@ public final class LimitsViewModel: ObservableObject {
 }
 
 extension LimitsViewModel {
+    /// "Claude: Max · 5h 78% · weekly 95% · Codex: Plus · 5h 99% · weekly 82%"
+    /// (Д1: окна теперь показываются у всех провайдеров, не только у Claude).
     public var statusTooltip: String {
         var parts: [String] = []
-
-        let cPlan = claude?.menuTitle ?? "Claude"
-        parts.append(cPlan)
-        if let fh = claude?.usage?.fiveHour {
-            parts.append("5h \(Self.tooltipRemaining(fh.utilizationPercent))%")
+        for state in states {
+            parts.append(state.snapshot?.menuTitle(shortName: state.descriptor.shortName)
+                          ?? state.descriptor.shortName)
+            for w in state.snapshot?.windows ?? [] {
+                guard let used = w.usedPercent else { continue }
+                let label = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins).long.lowercased()
+                parts.append("\(label) \(Self.tooltipRemaining(used))%")
+            }
         }
-        if let wk = claude?.usage?.sevenDay {
-            parts.append("weekly \(Self.tooltipRemaining(wk.utilizationPercent))%")
-        }
-
-        let xPlan = codex?.menuTitle ?? "Codex"
-        parts.append(xPlan)
-
         return parts.joined(separator: " · ")
     }
 
-    private static func tooltipRemaining(_ utilizationPercent: Double) -> String {
-        String(format: "%.0f", max(0, 100 - utilizationPercent))
+    private static func tooltipRemaining(_ usedPercent: Double) -> String {
+        String(format: "%.0f", max(0, 100 - usedPercent))
     }
 }

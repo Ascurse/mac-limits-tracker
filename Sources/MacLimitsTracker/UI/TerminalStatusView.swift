@@ -12,8 +12,6 @@ struct TerminalStatusView: View {
         static let dim = Color(hex: 0x565F89)
         static let track = Color(hex: 0x2F334D)
         static let cyan = Color(hex: 0x7DCFFF)
-        static let claude = Color(hex: 0xFF9E64)
-        static let codex = Color(hex: 0x9ECE6A)
         static let warning = Color(hex: 0xE0AF68)
         static let critical = Color(hex: 0xF7768E)
     }
@@ -23,8 +21,9 @@ struct TerminalStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            section(PopupContentBuilder.claudeSection(viewModel.claude), accent: Palette.claude, name: "claude", showOpenClaude: true)
-            section(PopupContentBuilder.codexSection(viewModel.codex), accent: Palette.codex, name: "codex")
+            ForEach(viewModel.states) { state in
+                section(PopupContentBuilder.section(state))
+            }
             Rectangle().fill(Palette.track).frame(height: 1)
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.cyan)
@@ -41,7 +40,7 @@ struct TerminalStatusView: View {
         HStack {
             Text("limits-tracker").foregroundStyle(Palette.cyan)
             Spacer()
-            Text(PopupContentBuilder.updatedText(claude: viewModel.claude, codex: viewModel.codex))
+            Text(PopupContentBuilder.updatedText(states: viewModel.states))
                 .foregroundStyle(Palette.dim)
             Button {
                 viewModel.refresh()
@@ -55,25 +54,26 @@ struct TerminalStatusView: View {
         }
     }
 
-    private func section(_ s: ProviderSectionContent, accent: Color, name: String, showOpenClaude: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func section(_ s: ProviderSectionContent) -> some View {
+        let accent = Color(hex: s.descriptor.accentColorHex)
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("●").foregroundStyle(accent)
-                Text(name)
+                Text(s.descriptor.id)
                 // Значение Plan из первой detail-строки показываем рядом с именем.
                 if case .detail(let key, let value) = s.rows.first, key == "Plan" {
                     Text(value).foregroundStyle(Palette.dim)
                 }
                 Spacer()
-                if showOpenClaude {
+                if let loginHelp = s.descriptor.loginHelp {
                     Button {
-                        openClaudeCode()
+                        openProviderCLI(loginHelp)
                     } label: {
                         Image(systemName: "arrow.up.forward.app")
                             .foregroundStyle(Palette.cyan)
                     }
                     .buttonStyle(.borderless)
-                    .help("Open Claude Code to refresh the claude.ai login")
+                    .help(loginHelp.helpText)
                     .accessibilityLabel("Open Claude Code")
                 }
             }

@@ -1,5 +1,42 @@
 import Foundation
 
+extension ClaudeLimitsProvider: LimitsProvider {
+    public var descriptor: ProviderDescriptor {
+        ProviderDescriptor(
+            id: "claude",
+            displayName: "Claude Code",
+            shortName: "Claude",
+            menuBarSymbol: "C",
+            accentColorHex: 0xFF9E64,
+            loginHelp: LoginHelp(
+                helpText: "Open Claude Code to refresh the claude.ai login",
+                binaryPath: claudeBinary
+            )
+        )
+    }
+
+    public func fetch() async -> LimitsSnapshot {
+        await fetchStatus().toSnapshot()
+    }
+}
+
+extension CodexLimitsProvider: LimitsProvider {
+    public var descriptor: ProviderDescriptor {
+        ProviderDescriptor(
+            id: "codex",
+            displayName: "Codex",
+            shortName: "Codex",
+            menuBarSymbol: "X",
+            accentColorHex: 0x9ECE6A,
+            loginHelp: nil
+        )
+    }
+
+    public func fetch() async -> LimitsSnapshot {
+        await fetchStatus().toSnapshot()
+    }
+}
+
 /// Приводит статус-структуры конкретных провайдеров к унифицированному `LimitsSnapshot`.
 /// Единственное место, где Claude/Codex-специфичные поля разбираются вручную —
 /// весь остальной стек (билдер, меню-бар, виджет) работает только со снапшотом.

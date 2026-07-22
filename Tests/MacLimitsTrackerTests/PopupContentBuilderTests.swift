@@ -12,6 +12,16 @@ final class SeverityTests: XCTestCase {
     }
 }
 
+private let claudeDescriptor = ProviderDescriptor(
+    id: "claude", displayName: "Claude Code", shortName: "Claude",
+    menuBarSymbol: "C", accentColorHex: 0xFF9E64, loginHelp: nil
+)
+
+private let codexDescriptor = ProviderDescriptor(
+    id: "codex", displayName: "Codex", shortName: "Codex",
+    menuBarSymbol: "X", accentColorHex: 0x9ECE6A, loginHelp: nil
+)
+
 final class PopupContentBuilderClaudeTests: XCTestCase {
     private func makeStatus(
         providerError: String? = nil,
@@ -34,33 +44,37 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
                           limitDollars: nil, usedDollars: nil, remainingDollars: nil)
     }
 
+    private func section(_ status: ClaudeStatus?, now: Date = Date()) -> ProviderSectionContent {
+        let state = ProviderState(descriptor: claudeDescriptor, snapshot: status?.toSnapshot())
+        return PopupContentBuilder.section(state, now: now)
+    }
+
     func test_nilStatus_isLoadingNote() {
-        let s = PopupContentBuilder.claudeSection(nil)
-        XCTAssertEqual(s.provider, .claude)
+        let s = section(nil)
+        XCTAssertEqual(s.descriptor.id, "claude")
         XCTAssertEqual(s.title, "Claude Code")
         XCTAssertEqual(s.rows, [.note("Loading…")])
     }
 
     func test_providerError_isSingleErrorRow() {
-        let s = PopupContentBuilder.claudeSection(makeStatus(providerError: "boom"))
+        let s = section(makeStatus(providerError: "boom"))
         XCTAssertEqual(s.rows, [.error("boom")])
     }
 
     func test_planRow_showsRawSubscriptionType() {
-        let s = PopupContentBuilder.claudeSection(makeStatus(usage: ClaudeUsage(fiveHour: nil, sevenDay: nil)))
+        let s = section(makeStatus(usage: ClaudeUsage(fiveHour: nil, sevenDay: nil)))
         // Тариф без капитализации — как в текущем попапе.
         XCTAssertEqual(s.rows.first, .detail(key: "Plan", value: "max"))
     }
 
     func test_planRow_dashWhenNil() {
-        let s = PopupContentBuilder.claudeSection(
-            makeStatus(usage: ClaudeUsage(fiveHour: nil, sevenDay: nil), subscriptionType: nil))
+        let s = section(makeStatus(usage: ClaudeUsage(fiveHour: nil, sevenDay: nil), subscriptionType: nil))
         XCTAssertEqual(s.rows.first, .detail(key: "Plan", value: "—"))
     }
 
     func test_windows_remainingIsInverseOfUtilization() {
         let usage = ClaudeUsage(fiveHour: window(28), sevenDay: window(69))
-        let s = PopupContentBuilder.claudeSection(makeStatus(usage: usage))
+        let s = section(makeStatus(usage: usage))
         guard case .window(let fh) = s.rows[1], case .window(let wk) = s.rows[2] else {
             return XCTFail("ожидались окна, rows: \(s.rows)")
         }
@@ -77,7 +91,7 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
 
     func test_windows_remainingClampedToZero() {
         let usage = ClaudeUsage(fiveHour: window(140), sevenDay: nil)
-        let s = PopupContentBuilder.claudeSection(makeStatus(usage: usage))
+        let s = section(makeStatus(usage: usage))
         guard case .window(let fh) = s.rows[1] else { return XCTFail("\(s.rows)") }
         XCTAssertEqual(fh.remainingPercent, 0)
         XCTAssertEqual(fh.remainingText, "0%")
@@ -86,7 +100,7 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
 
     func test_missingWindow_becomesUnavailableNote() {
         let usage = ClaudeUsage(fiveHour: nil, sevenDay: window(10))
-        let s = PopupContentBuilder.claudeSection(makeStatus(usage: usage))
+        let s = section(makeStatus(usage: usage))
         XCTAssertEqual(s.rows[1], .note("5h usage unavailable"))
         guard case .window = s.rows[2] else { return XCTFail("\(s.rows)") }
     }
@@ -94,7 +108,7 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
     func test_resetText_presentOnlyWithResetsAt() {
         let usage = ClaudeUsage(fiveHour: window(50, resetsAt: Date().addingTimeInterval(7200)),
                                 sevenDay: window(50))
-        let s = PopupContentBuilder.claudeSection(makeStatus(usage: usage))
+        let s = section(makeStatus(usage: usage))
         guard case .window(let fh) = s.rows[1], case .window(let wk) = s.rows[2] else {
             return XCTFail("\(s.rows)")
         }
@@ -104,12 +118,12 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
     }
 
     func test_usageError_shownWhenNoUsage() {
-        let s = PopupContentBuilder.claudeSection(makeStatus(usageError: "token expired"))
+        let s = section(makeStatus(usageError: "token expired"))
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "max"), .error("token expired")])
     }
 
     func test_noUsageNoError_loadingUsageNote() {
-        let s = PopupContentBuilder.claudeSection(makeStatus())
+        let s = section(makeStatus())
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "max"), .note("Loading usage…")])
     }
 }
@@ -139,22 +153,27 @@ final class PopupContentBuilderCodexTests: XCTestCase {
         CodexUsageWindow(usedPercent: used, windowDurationMins: duration, resetsAt: nil)
     }
 
+    private func section(_ status: CodexStatus?, now: Date = Date()) -> ProviderSectionContent {
+        let state = ProviderState(descriptor: codexDescriptor, snapshot: status?.toSnapshot())
+        return PopupContentBuilder.section(state, now: now)
+    }
+
     func test_nilStatus_isLoadingNote() {
-        let s = PopupContentBuilder.codexSection(nil)
-        XCTAssertEqual(s.provider, .codex)
+        let s = section(nil)
+        XCTAssertEqual(s.descriptor.id, "codex")
         XCTAssertEqual(s.title, "Codex")
         XCTAssertEqual(s.rows, [.note("Loading…")])
     }
 
     func test_providerError_isSingleErrorRow() {
-        let s = PopupContentBuilder.codexSection(makeStatus(providerError: "no auth.json"))
+        let s = section(makeStatus(providerError: "no auth.json"))
         XCTAssertEqual(s.rows, [.error("no auth.json")])
     }
 
     func test_snapshotPlanTypeWinsOverJwtClaim() {
         let snap = CodexUsageSnapshot(primary: nil, secondary: nil, planType: "pro",
                                       creditsBalance: nil, rateLimitReachedType: nil)
-        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let s = section(makeStatus(usage: CodexUsage(snapshot: snap)))
         XCTAssertEqual(s.rows.first, .detail(key: "Plan", value: "pro"))
     }
 
@@ -163,7 +182,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
                                       secondary: window(56, duration: 10080),
                                       planType: nil, creditsBalance: "12.50",
                                       rateLimitReachedType: "primary")
-        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let s = section(makeStatus(usage: CodexUsage(snapshot: snap)))
         // Plan, 5h, weekly, Credits, rate-limit error, Auth, Account, Org, Renews in, Renews
         XCTAssertEqual(s.rows.count, 10)
         XCTAssertEqual(s.rows[0], .detail(key: "Plan", value: "plus"))
@@ -183,7 +202,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
     func test_emptyCredits_skipped() {
         let snap = CodexUsageSnapshot(primary: nil, secondary: nil, planType: nil,
                                       creditsBalance: "", rateLimitReachedType: nil)
-        let s = PopupContentBuilder.codexSection(
+        let s = section(
             makeStatus(usage: CodexUsage(snapshot: snap), authMode: nil, email: nil,
                        accountOwner: nil, daysUntilRenewal: nil, subscriptionActiveUntil: nil))
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus")])
@@ -193,7 +212,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
         let snap = CodexUsageSnapshot(primary: window(56, duration: 10080), secondary: nil,
                                       planType: nil, creditsBalance: nil,
                                       rateLimitReachedType: nil)
-        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let s = section(makeStatus(usage: CodexUsage(snapshot: snap)))
         guard case .window(let wk) = s.rows[1] else {
             return XCTFail("ожидалось окно, rows: \(s.rows)")
         }
@@ -207,7 +226,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
         let snap = CodexUsageSnapshot(primary: window(56, duration: 10080), secondary: nil,
                                       planType: nil, creditsBalance: nil,
                                       rateLimitReachedType: nil)
-        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let s = section(makeStatus(usage: CodexUsage(snapshot: snap)))
         XCTAssertFalse(s.rows.contains {
             if case .window(let w) = $0 { return w.shortLabel == "5h" }
             return false
@@ -215,7 +234,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
     }
 
     func test_usageError_shownWhenNoSnapshot() {
-        let s = PopupContentBuilder.codexSection(
+        let s = section(
             makeStatus(usageError: "app-server unavailable", authMode: nil, email: nil,
                        accountOwner: nil, daysUntilRenewal: nil, subscriptionActiveUntil: nil))
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus"),
@@ -226,7 +245,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
         let snap = CodexUsageSnapshot(primary: window(20, duration: 180), secondary: nil,
                                       planType: nil, creditsBalance: nil,
                                       rateLimitReachedType: nil)
-        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let s = section(makeStatus(usage: CodexUsage(snapshot: snap)))
         guard case .window(let w) = s.rows[1] else {
             return XCTFail("окно нестандартной длительности не должно молча пропадать, rows: \(s.rows)")
         }
@@ -239,7 +258,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
                                       secondary: window(20, duration: 300),
                                       planType: nil, creditsBalance: nil,
                                       rateLimitReachedType: nil)
-        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let s = section(makeStatus(usage: CodexUsage(snapshot: snap)))
         let windowRows: [WindowContent] = s.rows.compactMap {
             if case .window(let w) = $0 { return w }
             return nil
@@ -254,7 +273,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
     func test_pastRenewalDate_hidesBothRenewRows() {
         let past = Date(timeIntervalSince1970: 0) // 1970-01-01
         let now = Date(timeIntervalSince1970: 1_000_000) // after past
-        let s = PopupContentBuilder.codexSection(
+        let s = section(
             makeStatus(daysUntilRenewal: nil, subscriptionActiveUntil: past),
             now: now)
         for row in s.rows {
@@ -268,7 +287,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
     func test_futureRenewalDate_showsBothRenewRows() {
         let future = Date(timeIntervalSince1970: 1_800_000_000) // ~2027
         let now = Date(timeIntervalSince1970: 1_700_000_000) // before future
-        let s = PopupContentBuilder.codexSection(
+        let s = section(
             makeStatus(daysUntilRenewal: 12, subscriptionActiveUntil: future),
             now: now)
         XCTAssertTrue(s.rows.contains(.detail(key: "Renews in", value: "12 days")),
@@ -282,7 +301,11 @@ final class PopupContentBuilderCodexTests: XCTestCase {
 
 final class PopupContentBuilderUpdatedTextTests: XCTestCase {
     func test_bothNil_dash() {
-        XCTAssertEqual(PopupContentBuilder.updatedText(claude: nil, codex: nil), "—")
+        let states = [
+            ProviderState(descriptor: claudeDescriptor, snapshot: nil),
+            ProviderState(descriptor: codexDescriptor, snapshot: nil)
+        ]
+        XCTAssertEqual(PopupContentBuilder.updatedText(states: states), "—")
     }
 
     func test_latestOfTwoDates_used() {
@@ -292,7 +315,11 @@ final class PopupContentBuilderUpdatedTextTests: XCTestCase {
             lastComputedDate: nil, totalSessions: nil, totalMessages: nil,
             usage: nil, usageError: nil,
             fetchedAt: Date(timeIntervalSince1970: 100), providerError: nil)
-        let text = PopupContentBuilder.updatedText(claude: claude, codex: nil)
+        let states = [
+            ProviderState(descriptor: claudeDescriptor, snapshot: claude.toSnapshot()),
+            ProviderState(descriptor: codexDescriptor, snapshot: nil)
+        ]
+        let text = PopupContentBuilder.updatedText(states: states)
         XCTAssertTrue(text.hasPrefix("Updated "), "получено: \(text)")
     }
 }

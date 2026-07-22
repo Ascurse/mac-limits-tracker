@@ -1,27 +1,16 @@
 import SwiftUI
 import MacLimitsTrackerCore
 
-/// Компактная панель на рабочем столе: остатки лимитов обоих провайдеров с прогресс-барами.
+/// Компактная панель на рабочем столе: остатки лимитов всех провайдеров с прогресс-барами.
 struct DesktopWidgetView: View {
     @ObservedObject var viewModel: LimitsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            providerSection(
-                title: "Claude",
-                color: .orange,
-                error: viewModel.claude?.providerError ?? viewModel.claude?.usageError,
-                isLoaded: viewModel.claude != nil,
-                windows: claudeWindows
-            )
-            providerSection(
-                title: "Codex",
-                color: .green,
-                error: viewModel.codex?.providerError ?? viewModel.codex?.usageError,
-                isLoaded: viewModel.codex != nil,
-                windows: codexWindows
-            )
+            ForEach(viewModel.states) { state in
+                providerSection(state)
+            }
         }
         .padding(14)
         .frame(width: 260)
@@ -60,9 +49,7 @@ struct DesktopWidgetView: View {
     }()
 
     private var latestUpdateText: String {
-        let claudeFetched = viewModel.claude?.fetchedAt ?? .distantPast
-        let codexFetched = viewModel.codex?.fetchedAt ?? .distantPast
-        let latest = max(claudeFetched, codexFetched)
+        let latest = viewModel.states.map { $0.snapshot?.fetchedAt ?? .distantPast }.max() ?? .distantPast
         if latest == .distantPast { return "—" }
         return Self.timeFormatter.string(from: latest)
     }
@@ -73,54 +60,29 @@ struct DesktopWidgetView: View {
         let resetText: String
     }
 
-    private var claudeWindows: [LimitWindow] {
-        guard let usage = viewModel.claude?.usage else { return [] }
-        var windows: [LimitWindow] = []
-        if let fh = usage.fiveHour {
-            windows.append(LimitWindow(
-                label: "5h",
-                remainingPercent: LimitsFormatting.claudeRemainingPercent(fh),
-                resetText: LimitsFormatting.resetText(resetsAt: fh.resetsAt)
-            ))
+    /// Только окна с реальными данными — заглушки со `usedPercent == nil` не отображаются
+    /// (для них секция целиком покажет «Usage unavailable», как раньше у Claude).
+    private func windows(for snapshot: LimitsSnapshot?) -> [LimitWindow] {
+        guard let windows = snapshot?.windows else { return [] }
+        return windows.compactMap { w in
+            guard let used = w.usedPercent else { return nil }
+            let label = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins).short
+            return LimitWindow(
+                label: label,
+                remainingPercent: LimitsFormatting.remainingPercent(usedPercent: used),
+                resetText: LimitsFormatting.resetText(resetsAt: w.resetsAt)
+            )
         }
-        if let wk = usage.sevenDay {
-            windows.append(LimitWindow(
-                label: "week",
-                remainingPercent: LimitsFormatting.claudeRemainingPercent(wk),
-                resetText: LimitsFormatting.resetText(resetsAt: wk.resetsAt)
-            ))
-        }
-        return windows
     }
 
-    private var codexWindows: [LimitWindow] {
-        guard let snapshot = viewModel.codex?.usage?.snapshot else { return [] }
-        var windows: [LimitWindow] = []
-        if let fh = snapshot.fiveHourWindow {
-            let labels = RateLimitWindowLabel.labels(forDurationMins: fh.windowDurationMins)
-            windows.append(LimitWindow(
-                label: labels.short,
-                remainingPercent: LimitsFormatting.codexRemainingPercent(fh),
-                resetText: LimitsFormatting.resetText(resetsAt: fh.resetsAt)
-            ))
-        }
-        if let wk = snapshot.weeklyWindow {
-            let labels = RateLimitWindowLabel.labels(forDurationMins: wk.windowDurationMins)
-            windows.append(LimitWindow(
-                label: labels.short,
-                remainingPercent: LimitsFormatting.codexRemainingPercent(wk),
-                resetText: LimitsFormatting.resetText(resetsAt: wk.resetsAt)
-            ))
-        }
-        return windows
-    }
-
-    private func providerSection(title: String, color: Color, error: String?,
-                                 isLoaded: Bool, windows: [LimitWindow]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func providerSection(_ state: ProviderState) -> some View {
+        let color = Color(hex: state.descriptor.accentColorHex)
+        let error = state.snapshot?.providerError ?? state.snapshot?.usageError
+        let items = windows(for: state.snapshot)
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle().fill(color).frame(width: 7, height: 7)
-                Text(title)
+                Text(state.descriptor.shortName)
                     .font(.caption.weight(.semibold))
                 Spacer()
             }
@@ -129,16 +91,16 @@ struct DesktopWidgetView: View {
                     .font(.caption2)
                     .foregroundStyle(.red)
                     .lineLimit(2)
-            } else if !isLoaded {
+            } else if state.snapshot == nil {
                 Text("Loading…")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-            } else if windows.isEmpty {
+            } else if items.isEmpty {
                 Text("Usage unavailable")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(windows, id: \.label) { window in
+                ForEach(items, id: \.label) { window in
                     windowRow(window, color: color)
                 }
             }
