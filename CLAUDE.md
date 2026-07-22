@@ -60,18 +60,43 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+swift build              # собрать всё (MacLimitsTracker app + Core + VerifyCli)
+swift test                # прогнать тесты (Tests/MacLimitsTrackerTests)
+swift run -c release VerifyCli  # диагностика реальных лимитов; ТОЛЬКО release —
+                                 # debug ловит ложный nano-malloc abort при выходе
+./make-app.sh              # собрать .app-бандл
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Swift Package с тремя таргетами:
+
+- **MacLimitsTrackerCore** — бизнес-логика без SwiftUI. Провайдер лимитов
+  реализует протокол `LimitsProvider` (`descriptor: ProviderDescriptor` +
+  `fetch() async -> LimitsSnapshot`); список зарегистрированных провайдеров —
+  `ProviderRegistry.makeDefault()`. Claude и Codex — `ClaudeLimitsProvider`/
+  `CodexLimitsProvider` в `Providers/LimitsProviders.swift`; каждый строит
+  внутренний DTO (`ClaudeStatus`/`CodexStatus`, `internal`) и мапит его в
+  публичный `LimitsSnapshot` через `toSnapshot()` (`Providers/SnapshotMapping.swift`).
+  `LimitsViewModel` держит `states: [ProviderState]` (дескриптор + последний
+  снапшот), обновляет их параллельно через `TaskGroup`.
+- **MacLimitsTracker** — SwiftUI app (menu-bar + попап в 4 темах + десктоп-виджет).
+  Темы (`UI/*StatusView.swift`) рендерят `PopupContentBuilder.section(state:)` —
+  ни одна тема не знает о конкретном провайдере, только `ProviderDescriptor`
+  (акцентный цвет, имя, кнопка «открыть CLI») и `PopupRow`.
+- **VerifyCli** — диагностический CLI, крутится по `ProviderRegistry` и печатает
+  снапшоты; запускать только в release (см. Build & Test).
+
+Добавление нового провайдера (например, Kimi — см. bd mac-limits-tracker-6gk):
+новый тип, конформящий `LimitsProvider`, плюс запись в `ProviderRegistry` —
+без правок в `LimitsViewModel`, `PopupContentBuilder`, темах или виджете.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Окна лимитов различаются по `windowDurationMins` (300 = 5h, 10080 = weekly),
+  не по позиции в ответе API — см. `RateLimitWindowLabel` и bd mac-limits-tracker-w4a.
+- `SnapshotWindow.usedPercent == nil` — слот заявлен, данных нет («… usage
+  unavailable»); билдер и виджет различают «слота нет» и «слот пуст».
+- Темы (`UI/*StatusView.swift`) — тупые рендеры `PopupRow`; provider-специфичная
+  логика запрещена в UI-слое, только в `Core/Providers` и мапперах.
