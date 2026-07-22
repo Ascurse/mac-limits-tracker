@@ -16,7 +16,7 @@ public struct StatusBarView: View {
             case .system:
                 SystemStatusView(viewModel: viewModel)
             case .terminal:
-                SystemStatusView(viewModel: viewModel) // заменит Task 4
+                TerminalStatusView(viewModel: viewModel)
             case .phosphor:
                 SystemStatusView(viewModel: viewModel) // заменит Task 5
             case .tui:
