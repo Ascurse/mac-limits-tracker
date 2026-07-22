@@ -124,6 +124,14 @@ public final class LimitsViewModel: ObservableObject {
     /// Персистит новые настройки и пересобирает `states`: существующие снапшоты
     /// сохраняются (не нужно ждать refresh ради переупорядочивания/выключения),
     /// вновь включённый провайдер получает `snapshot: nil` до ближайшего refresh().
+    ///
+    /// Если сейчас уже идёт refresh (isRefreshing), его обязательно нужно
+    /// перезапустить — иначе устаревшая задача захватила старый (до изменения
+    /// настроек) список провайдеров и по завершении перепишет states, вернув
+    /// уже выключенного/переставленного провайдера обратно (см. bd
+    /// mac-limits-tracker-6gk.2, ревью гонки). refresh() сам отменяет старый
+    /// Task, поэтому проверка `Task.isCancelled` в нём не даст устаревшим
+    /// данным просочиться в states.
     private func applyProviderSettingsChange() {
         settingsStore.save(providerSettings)
         let existingById = Dictionary(uniqueKeysWithValues: states.map { ($0.descriptor.id, $0) })
@@ -132,7 +140,7 @@ public final class LimitsViewModel: ObservableObject {
             existingById[provider.descriptor.id]
                 ?? ProviderState(descriptor: provider.descriptor, snapshot: nil)
         }
-        if states.contains(where: { $0.snapshot == nil }) { refresh() }
+        if isRefreshing || states.contains(where: { $0.snapshot == nil }) { refresh() }
     }
 }
 
