@@ -75,12 +75,19 @@ Swift Package с тремя таргетами:
 - **MacLimitsTrackerCore** — бизнес-логика без SwiftUI. Провайдер лимитов
   реализует протокол `LimitsProvider` (`descriptor: ProviderDescriptor` +
   `fetch() async -> LimitsSnapshot`); список зарегистрированных провайдеров —
-  `ProviderRegistry.makeDefault()`. Claude и Codex — `ClaudeLimitsProvider`/
-  `CodexLimitsProvider` в `Providers/LimitsProviders.swift`; каждый строит
-  внутренний DTO (`ClaudeStatus`/`CodexStatus`, `internal`) и мапит его в
-  публичный `LimitsSnapshot` через `toSnapshot()` (`Providers/SnapshotMapping.swift`).
-  `LimitsViewModel` держит `states: [ProviderState]` (дескриптор + последний
-  снапшот), обновляет их параллельно через `TaskGroup`.
+  `ProviderRegistry.makeDefault()`. Claude, Codex и Kimi — `ClaudeLimitsProvider`/
+  `CodexLimitsProvider`/`KimiLimitsProvider` в `Providers/LimitsProviders.swift`;
+  каждый строит внутренний DTO (`ClaudeStatus`/`CodexStatus`/`KimiStatus`,
+  `internal`) и мапит его в публичный `LimitsSnapshot` через `toSnapshot()`
+  (`Providers/SnapshotMapping.swift`). Kimi — "тонкий" провайдер: локального
+  источника usage/лимитов нет, только логин-детект по
+  `~/.kimi-code/credentials/kimi-code.json` (логин = непустой `refresh_token`,
+  не `expires_at` — access_token живёт ~900с) и опциональный план из JWT-claim;
+  `windows` всегда `nil`, `usageError` явно сообщает о недоступности данных.
+  Без рабочих credentials Kimi не регистрируется в `ProviderRegistry` вовсе
+  (`KimiLimitsProvider.hasUsableCredentials`) — скрыт из попапа/меню-бара/виджета
+  без единой правки в UI-слое. `LimitsViewModel` держит `states: [ProviderState]`
+  (дескриптор + последний снапшот), обновляет их параллельно через `TaskGroup`.
 - **MacLimitsTracker** — SwiftUI app (menu-bar + попап в 4 темах + десктоп-виджет).
   Темы (`UI/*StatusView.swift`) рендерят `PopupContentBuilder.section(state:)` —
   ни одна тема не знает о конкретном провайдере, только `ProviderDescriptor`
@@ -88,9 +95,10 @@ Swift Package с тремя таргетами:
 - **VerifyCli** — диагностический CLI, крутится по `ProviderRegistry` и печатает
   снапшоты; запускать только в release (см. Build & Test).
 
-Добавление нового провайдера (например, Kimi — см. bd mac-limits-tracker-6gk):
-новый тип, конформящий `LimitsProvider`, плюс запись в `ProviderRegistry` —
-без правок в `LimitsViewModel`, `PopupContentBuilder`, темах или виджете.
+Добавление нового провайдера: новый тип, конформящий `LimitsProvider`, плюс
+запись в `ProviderRegistry` — без правок в `LimitsViewModel`,
+`PopupContentBuilder`, темах или виджете (см. Kimi как пример "тонкого"
+провайдера без usage-данных, bd mac-limits-tracker-6gk.3).
 
 ## Conventions & Patterns
 
