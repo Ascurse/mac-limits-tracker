@@ -23,6 +23,17 @@ Both windows are the live, server-side rate-limit quotas, fetched from `GET http
 
 The status-bar tooltip shows `Claude: <plan> · Codex: <plan>` so you get the headline state without opening the popup.
 
+## Themes
+
+The popup supports four themes, switchable from the footer picker:
+
+- **System** — native macOS look (default)
+- **Terminal** — Tokyo Night palette with progress bars
+- **Phosphor** — monochrome green CRT with `█░` bars
+- **TUI** — htop-style panels with `[||||··]` gauges
+
+The choice is persisted in `UserDefaults` (`appTheme`).
+
 ## Data sources
 
 | Source             | What it reads                                                   | How                                                                          |
