@@ -8,8 +8,9 @@ public protocol LimitsProvider: Sendable {
     func fetch() async -> LimitsSnapshot
 }
 
-/// Список зарегистрированных провайдеров. M1: фиксированный порядок Claude → Codex;
-/// M2 добавит фильтр/порядок из UserDefaults поверх этого списка.
+/// Список зарегистрированных провайдеров, порядок реестра по умолчанию (Claude → Codex).
+/// Фактическую включённость и порядок отображения поверх этого списка задаёт
+/// `ProviderSettingsStore` — см. `LimitsViewModel.providerSettings`.
 public enum ProviderRegistry {
     public static func makeDefault() -> [any LimitsProvider] {
         [ClaudeLimitsProvider(), CodexLimitsProvider()]
