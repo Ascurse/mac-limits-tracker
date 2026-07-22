@@ -25,7 +25,17 @@ struct DesktopWidgetView: View {
         }
         .padding(14)
         .frame(width: 260)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        // Живой материал в borderless-панели на уровне десктопа схлопывается
+        // в чёрный фон после закрытия попапа — заливаем явно.
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.black.opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .environment(\.colorScheme, .dark)
         .accessibilityIdentifier("desktopWidget")
     }
 
