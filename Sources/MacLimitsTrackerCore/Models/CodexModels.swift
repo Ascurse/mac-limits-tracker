@@ -166,18 +166,7 @@ struct ChatGPTClaims: Equatable {
 
     /// Извлекает payload JWT как JSON-словарь. Не проверяет подпись — заявки только читаются.
     static func payload(of token: String) -> [String: Any]? {
-        let parts = token.split(separator: ".")
-        guard parts.count == 3 else { return nil }
-        var body = String(parts[1])
-        body = body.replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let pad = (4 - body.count % 4) % 4
-        body += String(repeating: "=", count: pad)
-        guard let data = Data(base64Encoded: body),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return obj
+        JwtPayloadDecoder.decode(token: token)
     }
 }
 

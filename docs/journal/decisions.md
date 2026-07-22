@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-23 — Общий JwtPayloadDecoder: 2 сегмента вместо строгих 3
+
+**Контекст:** декод base64url payload JWT дублировался в `KimiJwtPayloadParser` (≥2 сегмента, токен без подписи тоже валиден) и `ChatGPTClaims.payload` (строго 3 сегмента).
+**Решение:** вынесли общий `JwtPayloadDecoder` (`Models/JwtPayloadDecoding.swift`) с более мягкой проверкой Kimi (`segments.count >= 2`) — Codex теперь тоже принимает 2-сегментный токен без подписи.
+**Почему:** это правило корректнее по спеке JWT (unsecured JWT с `alg: none` легитимно имеет 2 сегмента); ни один из существующих характеризационных тестов Codex/Kimi не проверяет отказ именно на 2-сегментном токене, так что поведение не регрессирует.
+**Последствия:** `ChatGPTClaims.payload(of:)` и `KimiJwtPayloadParser.planClaim(fromToken:)` — тонкие обёртки над `JwtPayloadDecoder.decode(token:)`.
+
 ## 2026-07-23 — Заведена общая память проекта (docs/journal/)
 
 **Контекст:** не было единого источника для AI-ассистентов и общей технической памяти; знание жило в разрозненных bd remember и головах.
