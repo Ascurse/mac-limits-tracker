@@ -100,7 +100,9 @@ struct DesktopWidgetView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(items, id: \.label) { window in
+                // id по offset, а не по label: у двух окон может совпасть длительность
+                // (например два «5h»), и коллизия по label схлопнет строки.
+                ForEach(Array(items.enumerated()), id: \.offset) { _, window in
                     windowRow(window, color: color)
                 }
             }
