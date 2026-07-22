@@ -222,6 +222,35 @@ final class PopupContentBuilderCodexTests: XCTestCase {
                                 .error("app-server unavailable")])
     }
 
+    func test_nonStandardDurationWindow_rendersWithFallbackLabelInsteadOfDisappearing() {
+        let snap = CodexUsageSnapshot(primary: window(20, duration: 180), secondary: nil,
+                                      planType: nil, creditsBalance: nil,
+                                      rateLimitReachedType: nil)
+        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        guard case .window(let w) = s.rows[1] else {
+            return XCTFail("окно нестандартной длительности не должно молча пропадать, rows: \(s.rows)")
+        }
+        XCTAssertEqual(w.shortLabel, "3h")
+        XCTAssertEqual(w.remainingPercent, 80)
+    }
+
+    func test_duplicateFiveHourDurations_bothWindowsRendered() {
+        let snap = CodexUsageSnapshot(primary: window(10, duration: 300),
+                                      secondary: window(20, duration: 300),
+                                      planType: nil, creditsBalance: nil,
+                                      rateLimitReachedType: nil)
+        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        let windowRows: [WindowContent] = s.rows.compactMap {
+            if case .window(let w) = $0 { return w }
+            return nil
+        }
+        XCTAssertEqual(windowRows.count, 2, "оба окна с одинаковой длительностью должны отрисоваться, rows: \(s.rows)")
+        XCTAssertEqual(windowRows[0].shortLabel, "5h")
+        XCTAssertEqual(windowRows[1].shortLabel, "5h")
+        XCTAssertEqual(windowRows[0].remainingPercent, 90)
+        XCTAssertEqual(windowRows[1].remainingPercent, 80)
+    }
+
     func test_pastRenewalDate_hidesBothRenewRows() {
         let past = Date(timeIntervalSince1970: 0) // 1970-01-01
         let now = Date(timeIntervalSince1970: 1_000_000) // after past

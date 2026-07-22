@@ -29,8 +29,10 @@ struct Verify {
         print("providerError: \(codex.providerError ?? "—")")
         print("usageError: \(codex.usageError ?? "—")")
         if let snap = codex.usage?.snapshot {
-            printCodexWindow("5h", snap.primary)
-            printCodexWindow("weekly", snap.secondary)
+            printCodexWindow(RateLimitWindowLabel.labels(forDurationMins: snap.fiveHourWindow?.windowDurationMins).long,
+                             snap.fiveHourWindow)
+            printCodexWindow(RateLimitWindowLabel.labels(forDurationMins: snap.weeklyWindow?.windowDurationMins).long,
+                             snap.weeklyWindow)
             print("plan: \(snap.planType ?? "—")")
             print("credits: \(snap.creditsBalance ?? "—")")
             print("rateLimitReachedType: \(snap.rateLimitReachedType ?? "none")")

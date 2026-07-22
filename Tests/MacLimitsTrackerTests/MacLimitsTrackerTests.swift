@@ -129,6 +129,16 @@ final class CodexClaimsParserTests: XCTestCase {
                                                          calendar: .current))
     }
 
+    func test_daysUntilRenewal_returnsNil_whenRenewalIsToday() {
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 7; comps.day = 11
+        let now = Calendar(identifier: .gregorian).date(from: comps)!
+        let claims = ChatGPTClaims(email: nil, planType: nil,
+                                    subscriptionActiveUntil: now, accountOwner: nil)
+        XCTAssertNil(CodexClaimsParser.daysUntilRenewal(from: claims, referenceDate: now,
+                                                         calendar: .current))
+    }
+
     func test_daysUntilRenewal_returnsNil_whenClaimMissing() {
         let claims = ChatGPTClaims(email: nil, planType: nil,
                                     subscriptionActiveUntil: nil, accountOwner: nil)

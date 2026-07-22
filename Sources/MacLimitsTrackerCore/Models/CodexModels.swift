@@ -30,7 +30,9 @@ public struct CodexStatus: Equatable {
 
 /// Одно окно rate-limit Codex. `usedPercent` — использовано (0…100);
 /// осталось = `100 − usedPercent` (инверсия, как у ClaudeUsageWindow).
-/// `primary` = 5h (`windowDurationMins: 300`), `secondary` = weekly (`10080`).
+/// Порядок `primary`/`secondary` в ответе API не гарантирует длительность —
+/// какое окно 5h, а какое weekly, определяется по `windowDurationMins`
+/// (см. `CodexUsageSnapshot.fiveHourWindow`/`weeklyWindow`).
 public struct CodexUsageWindow: Equatable {
     public let usedPercent: Double
     public let windowDurationMins: Int?
