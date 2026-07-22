@@ -20,7 +20,7 @@ public struct StatusBarView: View {
             case .phosphor:
                 PhosphorStatusView(viewModel: viewModel)
             case .tui:
-                SystemStatusView(viewModel: viewModel) // заменит Task 6
+                TUIStatusView(viewModel: viewModel)
             }
         }
         .accessibilityIdentifier("statusBarPopup")

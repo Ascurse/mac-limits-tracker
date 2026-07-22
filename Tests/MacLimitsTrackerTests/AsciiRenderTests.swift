@@ -18,3 +18,20 @@ final class AsciiBarTests: XCTestCase {
         XCTAssertEqual(AsciiBar.render(remainingPercent: 50, width: 4), "██░░")
     }
 }
+
+final class TuiGaugeTests: XCTestCase {
+    func test_boundaries() {
+        XCTAssertEqual(TuiGauge.filledCount(remainingPercent: 0), 0)
+        XCTAssertEqual(TuiGauge.filledCount(remainingPercent: 100), 14)
+        XCTAssertEqual(TuiGauge.filledCount(remainingPercent: 50), 7)
+    }
+
+    func test_clampsOutOfRange() {
+        XCTAssertEqual(TuiGauge.filledCount(remainingPercent: -1), 0)
+        XCTAssertEqual(TuiGauge.filledCount(remainingPercent: 101), 14)
+    }
+
+    func test_customWidth() {
+        XCTAssertEqual(TuiGauge.filledCount(remainingPercent: 25, width: 8), 2)
+    }
+}

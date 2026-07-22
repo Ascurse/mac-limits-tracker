@@ -9,3 +9,11 @@ public enum AsciiBar {
              + String(repeating: "░", count: width - filled)
     }
 }
+
+/// Датчик темы TUI `[||||······]`: число заполненных делений (заполнено = остаток).
+public enum TuiGauge {
+    public static func filledCount(remainingPercent: Double, width: Int = 14) -> Int {
+        let clamped = min(100, max(0, remainingPercent))
+        return Int((clamped / 100 * Double(width)).rounded())
+    }
+}
