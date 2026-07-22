@@ -96,16 +96,18 @@ struct DesktopWidgetView: View {
     private var codexWindows: [LimitWindow] {
         guard let snapshot = viewModel.codex?.usage?.snapshot else { return [] }
         var windows: [LimitWindow] = []
-        if let fh = snapshot.primary {
+        if let fh = snapshot.fiveHourWindow {
+            let labels = RateLimitWindowLabel.labels(forDurationMins: fh.windowDurationMins)
             windows.append(LimitWindow(
-                label: "5h",
+                label: labels.short,
                 remainingPercent: LimitsFormatting.codexRemainingPercent(fh),
                 resetText: LimitsFormatting.resetText(resetsAt: fh.resetsAt)
             ))
         }
-        if let wk = snapshot.secondary {
+        if let wk = snapshot.weeklyWindow {
+            let labels = RateLimitWindowLabel.labels(forDurationMins: wk.windowDurationMins)
             windows.append(LimitWindow(
-                label: "week",
+                label: labels.short,
                 remainingPercent: LimitsFormatting.codexRemainingPercent(wk),
                 resetText: LimitsFormatting.resetText(resetsAt: wk.resetsAt)
             ))

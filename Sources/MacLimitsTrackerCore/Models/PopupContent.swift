@@ -104,14 +104,20 @@ public enum PopupContentBuilder {
                 let plan = x.usage?.snapshot?.planType ?? x.planType
                 rows.append(.detail(key: "Plan", value: plan ?? "—"))
                 if let snap = x.usage?.snapshot {
-                    rows.append(windowRow(short: "5h", long: "5h",
-                                          remaining: snap.primary.map { max(0, 100 - $0.usedPercent) },
-                                          resetsAt: snap.primary?.resetsAt, now: now,
-                                          unavailable: "5h usage unavailable"))
-                    rows.append(windowRow(short: "wk", long: "Weekly",
-                                          remaining: snap.secondary.map { max(0, 100 - $0.usedPercent) },
-                                          resetsAt: snap.secondary?.resetsAt, now: now,
-                                          unavailable: "Weekly usage unavailable"))
+                    if let fh = snap.fiveHourWindow {
+                        let labels = RateLimitWindowLabel.labels(forDurationMins: fh.windowDurationMins)
+                        rows.append(windowRow(short: labels.short, long: labels.long,
+                                              remaining: max(0, 100 - fh.usedPercent),
+                                              resetsAt: fh.resetsAt, now: now,
+                                              unavailable: ""))
+                    }
+                    if let wk = snap.weeklyWindow {
+                        let labels = RateLimitWindowLabel.labels(forDurationMins: wk.windowDurationMins)
+                        rows.append(windowRow(short: labels.short, long: labels.long,
+                                              remaining: max(0, 100 - wk.usedPercent),
+                                              resetsAt: wk.resetsAt, now: now,
+                                              unavailable: ""))
+                    }
                     if let bal = snap.creditsBalance, !bal.isEmpty {
                         rows.append(.detail(key: "Credits", value: bal))
                     }
@@ -129,7 +135,7 @@ public enum PopupContentBuilder {
                 if let days = x.daysUntilRenewal {
                     rows.append(.detail(key: "Renews in", value: "\(days) days"))
                 }
-                if let until = x.subscriptionActiveUntil {
+                if let until = x.subscriptionActiveUntil, until > now {
                     rows.append(.detail(key: "Renews", value: dateFormatter.string(from: until)))
                 }
             }

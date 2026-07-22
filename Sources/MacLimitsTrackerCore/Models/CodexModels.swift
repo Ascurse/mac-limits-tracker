@@ -44,6 +44,38 @@ public struct CodexUsageSnapshot: Equatable {
     public let planType: String?
     public let creditsBalance: String?
     public let rateLimitReachedType: String?
+
+    /// Окно 5h (300 минут) независимо от того, primary или secondary оно пришло.
+    public var fiveHourWindow: CodexUsageWindow? {
+        [primary, secondary].compactMap { $0 }.first { $0.windowDurationMins == 300 }
+    }
+
+    /// Окно weekly (10080 минут) независимо от позиции в ответе API.
+    public var weeklyWindow: CodexUsageWindow? {
+        [primary, secondary].compactMap { $0 }.first { $0.windowDurationMins == 10080 }
+    }
+}
+
+/// Метки для окон rate-limit по длительности в минутах.
+public enum RateLimitWindowLabel {
+    public static func labels(forDurationMins minutes: Int?) -> (short: String, long: String) {
+        guard let minutes = minutes else { return ("?", "Unknown") }
+        switch minutes {
+        case 300: return ("5h", "5h")
+        case 10080: return ("wk", "Weekly")
+        default: return (shortLabel(for: minutes), shortLabel(for: minutes))
+        }
+    }
+
+    private static func shortLabel(for minutes: Int) -> String {
+        if minutes < 60 {
+            return "\(minutes)m"
+        } else if minutes % 60 == 0 {
+            return "\(minutes / 60)h"
+        } else {
+            return "\(minutes / 60)h\(minutes % 60)m"
+        }
+    }
 }
 
 public struct CodexUsage: Equatable {
@@ -195,6 +227,6 @@ enum CodexClaimsParser {
                                  calendar: Calendar = .current) -> Int? {
         guard let until = claims.subscriptionActiveUntil else { return nil }
         let comps = calendar.dateComponents([.day], from: referenceDate, to: until)
-        return comps.day.map { max(0, $0) }
+        return comps.day.flatMap { $0 > 0 ? $0 : nil }
     }
 }

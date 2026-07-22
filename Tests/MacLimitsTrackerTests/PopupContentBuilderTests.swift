@@ -135,8 +135,8 @@ final class PopupContentBuilderCodexTests: XCTestCase {
         )
     }
 
-    private func window(_ used: Double) -> CodexUsageWindow {
-        CodexUsageWindow(usedPercent: used, windowDurationMins: nil, resetsAt: nil)
+    private func window(_ used: Double, duration: Int? = nil) -> CodexUsageWindow {
+        CodexUsageWindow(usedPercent: used, windowDurationMins: duration, resetsAt: nil)
     }
 
     func test_nilStatus_isLoadingNote() {
@@ -159,7 +159,8 @@ final class PopupContentBuilderCodexTests: XCTestCase {
     }
 
     func test_fullSnapshot_rowOrder() {
-        let snap = CodexUsageSnapshot(primary: window(42), secondary: window(56),
+        let snap = CodexUsageSnapshot(primary: window(42, duration: 300),
+                                      secondary: window(56, duration: 10080),
                                       planType: nil, creditsBalance: "12.50",
                                       rateLimitReachedType: "primary")
         let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
@@ -185,9 +186,32 @@ final class PopupContentBuilderCodexTests: XCTestCase {
         let s = PopupContentBuilder.codexSection(
             makeStatus(usage: CodexUsage(snapshot: snap), authMode: nil, email: nil,
                        accountOwner: nil, daysUntilRenewal: nil, subscriptionActiveUntil: nil))
-        XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus"),
-                                .note("5h usage unavailable"),
-                                .note("Weekly usage unavailable")])
+        XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus")])
+    }
+
+    func test_weeklyWindowInPrimary_rendersWithLongLabelWeekly() {
+        let snap = CodexUsageSnapshot(primary: window(56, duration: 10080), secondary: nil,
+                                      planType: nil, creditsBalance: nil,
+                                      rateLimitReachedType: nil)
+        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        guard case .window(let wk) = s.rows[1] else {
+            return XCTFail("ожидалось окно, rows: \(s.rows)")
+        }
+        XCTAssertEqual(wk.shortLabel, "wk")
+        XCTAssertEqual(wk.longLabel, "Weekly")
+        XCTAssertEqual(wk.remainingPercent, 44)
+        XCTAssertEqual(wk.remainingText, "44%")
+    }
+
+    func test_onlyWeeklyWindow_rendersNo5hRow() {
+        let snap = CodexUsageSnapshot(primary: window(56, duration: 10080), secondary: nil,
+                                      planType: nil, creditsBalance: nil,
+                                      rateLimitReachedType: nil)
+        let s = PopupContentBuilder.codexSection(makeStatus(usage: CodexUsage(snapshot: snap)))
+        XCTAssertFalse(s.rows.contains {
+            if case .window(let w) = $0 { return w.shortLabel == "5h" }
+            return false
+        })
     }
 
     func test_usageError_shownWhenNoSnapshot() {
@@ -196,6 +220,34 @@ final class PopupContentBuilderCodexTests: XCTestCase {
                        accountOwner: nil, daysUntilRenewal: nil, subscriptionActiveUntil: nil))
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus"),
                                 .error("app-server unavailable")])
+    }
+
+    func test_pastRenewalDate_hidesBothRenewRows() {
+        let past = Date(timeIntervalSince1970: 0) // 1970-01-01
+        let now = Date(timeIntervalSince1970: 1_000_000) // after past
+        let s = PopupContentBuilder.codexSection(
+            makeStatus(daysUntilRenewal: nil, subscriptionActiveUntil: past),
+            now: now)
+        for row in s.rows {
+            if case .detail(let key, _) = row {
+                XCTAssertNotEqual(key, "Renews in", "past renewal: 'Renews in' must be absent")
+                XCTAssertNotEqual(key, "Renews", "past renewal: 'Renews' must be absent")
+            }
+        }
+    }
+
+    func test_futureRenewalDate_showsBothRenewRows() {
+        let future = Date(timeIntervalSince1970: 1_800_000_000) // ~2027
+        let now = Date(timeIntervalSince1970: 1_700_000_000) // before future
+        let s = PopupContentBuilder.codexSection(
+            makeStatus(daysUntilRenewal: 12, subscriptionActiveUntil: future),
+            now: now)
+        XCTAssertTrue(s.rows.contains(.detail(key: "Renews in", value: "12 days")),
+                      "future renewal: 'Renews in' must be present")
+        XCTAssertTrue(s.rows.contains(where: { row in
+            if case .detail(let key, _) = row, key == "Renews" { return true }
+            return false
+        }), "future renewal: 'Renews' must be present")
     }
 }
 
