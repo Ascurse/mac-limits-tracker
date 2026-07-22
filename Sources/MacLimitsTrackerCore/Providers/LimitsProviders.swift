@@ -194,6 +194,66 @@ public struct CodexLimitsProvider: @unchecked Sendable {
     }
 }
 
+/// Источник данных о лимитах Kimi (Moonshot AI). "Тонкий" провайдер: локального
+/// источника usage/лимитов не существует (ни файла, ни CLI, ни подтверждённого API) —
+/// fetch() определяет только факт логина и, если получится, план из JWT access_token.
+public struct KimiLimitsProvider: @unchecked Sendable {
+    /// Дефолтный путь credentials-файла; вынесен в статику, чтобы `ProviderRegistry`
+    /// мог использовать то же значение по умолчанию без дублирования. Должен быть
+    /// `public` — Swift требует видимость default-параметра не ниже видимости функции,
+    /// даже в пределах модуля.
+    public static let defaultCredentialsURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent(".kimi-code/credentials/kimi-code.json")
+
+    let credentialsURL: URL
+    let fileReader: (URL) async throws -> Data
+
+    public init(
+        credentialsURL: URL = KimiLimitsProvider.defaultCredentialsURL,
+        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) }
+    ) {
+        self.credentialsURL = credentialsURL
+        self.fileReader = fileReader
+    }
+
+    func fetchStatus() async -> KimiStatus {
+        let now = Date()
+        do {
+            let data = try await fileReader(credentialsURL)
+            let creds = try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+            guard !creds.refreshToken.isEmpty else {
+                return KimiStatus(loggedIn: false, plan: nil, usageError: nil,
+                                  providerError: "kimi-code refresh token missing", fetchedAt: now)
+            }
+            let plan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
+            return KimiStatus(
+                loggedIn: true, plan: plan,
+                usageError: "Kimi usage data is not available",
+                providerError: nil, fetchedAt: now
+            )
+        } catch {
+            return KimiStatus(
+                loggedIn: false, plan: nil, usageError: nil,
+                providerError: "kimi-code credentials read failed: \(friendly(error))",
+                fetchedAt: now
+            )
+        }
+    }
+}
+
+extension KimiLimitsProvider {
+    /// Синхронная проверка перед регистрацией провайдера (без сети/подпроцессов):
+    /// нет файла или пуст refresh_token — провайдер скрывается из реестра
+    /// (см. критерий приёмки bd mac-limits-tracker-6gk.3).
+    static func hasUsableCredentials(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url),
+              let creds = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+        else { return false }
+        return !creds.refreshToken.isEmpty
+    }
+}
+
 public enum ProcessRunner {
     public static func run(_ binary: String, _ args: [String]) async throws -> Data {
         let process = Process()

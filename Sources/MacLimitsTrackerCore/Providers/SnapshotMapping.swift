@@ -37,6 +37,23 @@ extension CodexLimitsProvider: LimitsProvider {
     }
 }
 
+extension KimiLimitsProvider: LimitsProvider {
+    public var descriptor: ProviderDescriptor {
+        ProviderDescriptor(
+            id: "kimi",
+            displayName: "Kimi",
+            shortName: "Kimi",
+            menuBarSymbol: "K",
+            accentColorHex: 0x7AA2F7,
+            loginHelp: nil
+        )
+    }
+
+    public func fetch() async -> LimitsSnapshot {
+        await fetchStatus().toSnapshot()
+    }
+}
+
 /// Приводит статус-структуры конкретных провайдеров к унифицированному `LimitsSnapshot`.
 /// Единственное место, где Claude/Codex-специфичные поля разбираются вручную —
 /// весь остальной стек (билдер, меню-бар, виджет) работает только со снапшотом.
@@ -118,5 +135,26 @@ extension CodexStatus {
         case .some(let mins): return (2, mins)
         case .none: return (3, Int.max)
         }
+    }
+}
+
+extension KimiStatus {
+    /// Kimi — "тонкий" провайдер: локального источника usage/лимитов нет, поэтому
+    /// windows/credits/renewal всегда пусты; usageError объясняет это пользователю
+    /// (не "Loading…" — данные не появятся, см. bd mac-limits-tracker-6gk.3).
+    func toSnapshot() -> LimitsSnapshot {
+        LimitsSnapshot(
+            loggedIn: loggedIn,
+            plan: plan,
+            windows: nil,
+            creditsBalance: nil,
+            rateLimitReachedType: nil,
+            details: [],
+            daysUntilRenewal: nil,
+            renewalDate: nil,
+            usageError: usageError,
+            providerError: providerError,
+            fetchedAt: fetchedAt
+        )
     }
 }

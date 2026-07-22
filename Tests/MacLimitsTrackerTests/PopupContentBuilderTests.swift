@@ -299,6 +299,55 @@ final class PopupContentBuilderCodexTests: XCTestCase {
     }
 }
 
+private let kimiDescriptor = ProviderDescriptor(
+    id: "kimi", displayName: "Kimi", shortName: "Kimi",
+    menuBarSymbol: "K", accentColorHex: 0x7AA2F7, loginHelp: nil
+)
+
+/// Kimi — характеризационный тест на уже существующий generic-билдер:
+/// новый провайдер не требует изменений в PopupContentBuilder (bd mac-limits-tracker-6gk.3).
+final class PopupContentBuilderKimiTests: XCTestCase {
+    private static let sentinel = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func section(_ status: KimiStatus?) -> ProviderSectionContent {
+        let state = ProviderState(descriptor: kimiDescriptor, snapshot: status?.toSnapshot())
+        return PopupContentBuilder.section(state, now: Self.sentinel)
+    }
+
+    func test_loggedInWithPlan_showsPlanAndUsageUnavailableError() {
+        let status = KimiStatus(loggedIn: true, plan: "kimi-pro",
+                                usageError: "Kimi usage data is not available",
+                                providerError: nil, fetchedAt: Self.sentinel)
+        let s = section(status)
+        XCTAssertEqual(s.descriptor.id, "kimi")
+        XCTAssertEqual(s.title, "Kimi")
+        XCTAssertEqual(s.rows, [
+            .detail(key: "Plan", value: "kimi-pro"),
+            .error("Kimi usage data is not available")
+        ])
+    }
+
+    func test_loggedInWithoutPlan_showsDashPlan() {
+        let status = KimiStatus(loggedIn: true, plan: nil,
+                                usageError: "Kimi usage data is not available",
+                                providerError: nil, fetchedAt: Self.sentinel)
+        let s = section(status)
+        XCTAssertEqual(s.rows.first, .detail(key: "Plan", value: "—"))
+    }
+
+    func test_notLoggedIn_showsSingleErrorRow() {
+        let status = KimiStatus(loggedIn: false, plan: nil, usageError: nil,
+                                providerError: "kimi-code refresh token missing",
+                                fetchedAt: Self.sentinel)
+        let s = section(status)
+        XCTAssertEqual(s.rows, [.error("kimi-code refresh token missing")])
+    }
+
+    func test_nilStatus_isLoadingNote() {
+        XCTAssertEqual(section(nil).rows, [.note("Loading…")])
+    }
+}
+
 final class PopupContentBuilderUpdatedTextTests: XCTestCase {
     func test_bothNil_dash() {
         let states = [
