@@ -16,33 +16,37 @@
 Вся логика форматирования переезжает из `StatusBarView` в чистые типы:
 
 ```swift
-/// Готовые к показу данные одной секции провайдера.
+/// Строка попапа: порядок строк задаёт билдер — единый для всех тем.
+public enum PopupRow: Equatable {
+    case detail(key: String, value: String)
+    case window(WindowContent)
+    case error(String)
+    case note(String)   // "Loading…", "5h usage unavailable"…
+}
+
+public struct WindowContent: Equatable {
+    public let shortLabel: String        // "5h" / "wk" — компактные темы
+    public let longLabel: String         // "5h" / "Weekly" — системная тема
+    public let remainingPercent: Double  // 0…100, ОСТАТОК
+    public let remainingText: String     // "72%"
+    public let resetText: String?        // "in 2 hours" / nil
+    public let severity: Severity
+}
+
+public enum Severity: Equatable {
+    case normal    // остаток > 40%
+    case warning   // 15% < остаток ≤ 40%
+    case critical  // остаток ≤ 15%
+    static func from(remainingPercent: Double) -> Severity
+}
+
+public enum PopupProvider: Equatable { case claude, codex }
+
+/// Секция попапа одного провайдера: упорядоченный список строк.
 public struct ProviderSectionContent: Equatable {
-    public let title: String            // "Claude Code" / "Codex"
-    public let plan: String             // "Max" / "Plus" / "—"
-    public let windows: [WindowContent] // 0…2 окна (5h, weekly)
-    public let details: [DetailRow]     // Auth / Account / Org / Credits / Renews…
-    public let error: String?           // providerError или usageError
-    public let isLoading: Bool
-
-    public struct WindowContent: Equatable {
-        public let label: String        // "5h" / "wk"
-        public let remainingPercent: Double  // 0…100, ОСТАТОК
-        public let remainingText: String     // "72%"
-        public let resetText: String?        // "in 2 hours" / nil
-        public let severity: Severity
-    }
-
-    public struct DetailRow: Equatable {
-        public let key: String
-        public let value: String
-    }
-
-    public enum Severity: Equatable {
-        case normal    // остаток > 40%
-        case warning   // 15% < остаток ≤ 40%
-        case critical  // остаток ≤ 15%
-    }
+    public let provider: PopupProvider
+    public let title: String   // "Claude Code" / "Codex"
+    public let rows: [PopupRow]
 }
 
 /// Сборка секций из статусов провайдеров (чистые функции, unit-тесты).
@@ -56,11 +60,12 @@ public enum PopupContentBuilder {
 Правила (перенос текущего поведения, не менять):
 - Остаток = `max(0, 100 − использовано)`; Claude: `utilizationPercent`, Codex: `usedPercent`.
 - Сброс — `RelativeDateTimeFormatter` (`.full`), как сейчас.
-- Отсутствующее окно → окно не добавляется, вместо него ничего (темы сами показывают "unavailable").
-- `providerError` → `error`, окна пустые. `usageError` без usage → тоже в `error`.
-- `status == nil` → `isLoading = true`.
-- Codex-детали в текущем порядке: Credits, Auth, Account, Org, Renews in / Renews.
-- `rateLimitReachedType` → добавляется в `error` строкой "rate limit reached: …".
+- Отсутствующее окно → `.note("5h/Weekly usage unavailable")` на его месте.
+- `providerError` → секция из одной `.error`. `usageError` без usage → `.error` после Plan.
+- `status == nil` → секция из одной `.note("Loading…")`.
+- Codex-строки в текущем порядке: Plan, 5h, Weekly, Credits, rate-limit error, Auth, Account, Org, Renews in, Renews.
+- `rateLimitReachedType` → `.error("rate limit reached: …")`.
+- Первая строка секции — всегда Plan (`.detail(key: "Plan", …)`), кроме ошибки/загрузки; темы Terminal/Phosphor/TUI показывают её в заголовке секции и пропускают в списке.
 
 ### 2. Тема (App)
 
