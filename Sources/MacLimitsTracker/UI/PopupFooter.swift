@@ -4,10 +4,17 @@ import MacLimitsTrackerCore
 /// Общий футер всех тем: режим меню-бара, автообновление, выход.
 struct PopupFooter: View {
     @ObservedObject var viewModel: LimitsViewModel
+    @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
 
     var body: some View {
         VStack(spacing: 8) {
+            Picker("Theme", selection: $theme) {
+                ForEach(AppTheme.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .controlSize(.mini)
+
             Picker("Menu bar", selection: $displayMode) {
                 ForEach(MenuBarDisplayMode.allCases) { Text($0.title).tag($0) }
             }
