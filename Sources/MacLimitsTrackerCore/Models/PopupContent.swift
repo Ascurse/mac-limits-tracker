@@ -104,39 +104,71 @@ public enum PopupContentBuilder {
                 let plan = x.usage?.snapshot?.planType ?? x.planType
                 rows.append(.detail(key: "Plan", value: plan ?? "—"))
                 if let snap = x.usage?.snapshot {
-                    rows.append(windowRow(short: "5h", long: "5h",
-                                          remaining: snap.primary.map { max(0, 100 - $0.usedPercent) },
-                                          resetsAt: snap.primary?.resetsAt, now: now,
-                                          unavailable: "5h usage unavailable"))
-                    rows.append(windowRow(short: "wk", long: "Weekly",
-                                          remaining: snap.secondary.map { max(0, 100 - $0.usedPercent) },
-                                          resetsAt: snap.secondary?.resetsAt, now: now,
-                                          unavailable: "Weekly usage unavailable"))
-                    if let bal = snap.creditsBalance, !bal.isEmpty {
-                        rows.append(.detail(key: "Credits", value: bal))
-                    }
-                    if let reached = snap.rateLimitReachedType {
-                        rows.append(.error("rate limit reached: \(reached)"))
-                    }
+                    rows.append(contentsOf: codexUsageRows(snap, now: now))
                 } else if let ue = x.usageError {
                     rows.append(.error(ue))
                 } else {
                     rows.append(.note("Loading usage…"))
                 }
-                if let auth = x.authMode { rows.append(.detail(key: "Auth", value: auth)) }
-                if let email = x.email { rows.append(.detail(key: "Account", value: email)) }
-                if let owner = x.accountOwner { rows.append(.detail(key: "Org", value: owner)) }
-                if let days = x.daysUntilRenewal {
-                    rows.append(.detail(key: "Renews in", value: "\(days) days"))
-                }
-                if let until = x.subscriptionActiveUntil {
-                    rows.append(.detail(key: "Renews", value: dateFormatter.string(from: until)))
-                }
+                rows.append(contentsOf: codexAccountRows(x))
+                rows.append(contentsOf: codexRenewalRows(x, now: now))
             }
         } else {
             rows.append(.note("Loading…"))
         }
         return ProviderSectionContent(provider: .codex, title: "Codex", rows: rows)
+    }
+
+    /// Строки окон + кредиты + ошибка rate-limit из снапшота Codex.
+    private static func codexUsageRows(_ snap: CodexUsageSnapshot, now: Date) -> [PopupRow] {
+        var rows = codexWindowRows(snap, now: now)
+        if let bal = snap.creditsBalance, !bal.isEmpty {
+            rows.append(.detail(key: "Credits", value: bal))
+        }
+        if let reached = snap.rateLimitReachedType {
+            rows.append(.error("rate limit reached: \(reached)"))
+        }
+        return rows
+    }
+
+    /// Все окна снапшота (primary+secondary), любой длительности — ни одно не пропадает молча.
+    /// Порядок: 5h первым, weekly вторым, прочие — по возрастанию длительности, nil-длительность в конце.
+    private static func codexWindowRows(_ snap: CodexUsageSnapshot, now: Date) -> [PopupRow] {
+        let windows = [snap.primary, snap.secondary].compactMap { $0 }
+        return windows.sorted { codexWindowSortKey($0) < codexWindowSortKey($1) }.map { w in
+            let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
+            return windowRow(short: labels.short, long: labels.long,
+                             remaining: max(0, 100 - w.usedPercent),
+                             resetsAt: w.resetsAt, now: now)
+        }
+    }
+
+    private static func codexWindowSortKey(_ w: CodexUsageWindow) -> (Int, Int) {
+        switch w.windowDurationMins {
+        case 300: return (0, 0)
+        case 10080: return (1, 0)
+        case .some(let mins): return (2, mins)
+        case .none: return (3, Int.max)
+        }
+    }
+
+    private static func codexAccountRows(_ x: CodexStatus) -> [PopupRow] {
+        var rows: [PopupRow] = []
+        if let auth = x.authMode { rows.append(.detail(key: "Auth", value: auth)) }
+        if let email = x.email { rows.append(.detail(key: "Account", value: email)) }
+        if let owner = x.accountOwner { rows.append(.detail(key: "Org", value: owner)) }
+        return rows
+    }
+
+    private static func codexRenewalRows(_ x: CodexStatus, now: Date) -> [PopupRow] {
+        var rows: [PopupRow] = []
+        if let days = x.daysUntilRenewal {
+            rows.append(.detail(key: "Renews in", value: "\(days) days"))
+        }
+        if let until = x.subscriptionActiveUntil, until > now {
+            rows.append(.detail(key: "Renews", value: dateFormatter.string(from: until)))
+        }
+        return rows
     }
 
     public static func updatedText(claude: ClaudeStatus?, codex: CodexStatus?) -> String {
@@ -148,7 +180,7 @@ public enum PopupContentBuilder {
     }
 
     private static func windowRow(short: String, long: String, remaining: Double?,
-                                  resetsAt: Date?, now: Date, unavailable: String) -> PopupRow {
+                                  resetsAt: Date?, now: Date, unavailable: String = "unavailable") -> PopupRow {
         guard let p = remaining else { return .note(unavailable) }
         return .window(WindowContent(
             shortLabel: short,

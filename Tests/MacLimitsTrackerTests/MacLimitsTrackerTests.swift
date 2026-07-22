@@ -103,7 +103,7 @@ final class CodexClaimsParserTests: XCTestCase {
         XCTAssertNil(claims.email)
     }
 
-    func test_daysUntilRenewalFloorsAtZero() {
+    func test_daysUntilRenewal_returnsPositiveDays_forFutureDate() {
         var comps = DateComponents()
         comps.year = 2026; comps.month = 7; comps.day = 11
         let now = Calendar(identifier: .gregorian).date(from: comps)!
@@ -113,15 +113,36 @@ final class CodexClaimsParserTests: XCTestCase {
         let claims = ChatGPTClaims(email: nil, planType: "plus",
                                     subscriptionActiveUntil: until, accountOwner: nil)
         let days = CodexClaimsParser.daysUntilRenewal(from: claims, referenceDate: now,
-                                                      calendar: .current)
+                                                       calendar: .current)
         XCTAssertEqual(days, 14)
+    }
 
+    func test_daysUntilRenewal_returnsNil_forPastDate() {
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 7; comps.day = 11
+        let now = Calendar(identifier: .gregorian).date(from: comps)!
         let past = ChatGPTClaims(email: nil, planType: nil,
                                   subscriptionActiveUntil: now.addingTimeInterval(-86_400),
                                   accountOwner: nil)
-        XCTAssertEqual(CodexClaimsParser.daysUntilRenewal(from: past,
-                                                           referenceDate: now,
-                                                           calendar: .current), 0)
+        XCTAssertNil(CodexClaimsParser.daysUntilRenewal(from: past,
+                                                         referenceDate: now,
+                                                         calendar: .current))
+    }
+
+    func test_daysUntilRenewal_returnsNil_whenRenewalIsToday() {
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 7; comps.day = 11
+        let now = Calendar(identifier: .gregorian).date(from: comps)!
+        let claims = ChatGPTClaims(email: nil, planType: nil,
+                                    subscriptionActiveUntil: now, accountOwner: nil)
+        XCTAssertNil(CodexClaimsParser.daysUntilRenewal(from: claims, referenceDate: now,
+                                                         calendar: .current))
+    }
+
+    func test_daysUntilRenewal_returnsNil_whenClaimMissing() {
+        let claims = ChatGPTClaims(email: nil, planType: nil,
+                                    subscriptionActiveUntil: nil, accountOwner: nil)
+        XCTAssertNil(CodexClaimsParser.daysUntilRenewal(from: claims))
     }
 
     func test_authFileDecodesAuthModeAndTokens() throws {
@@ -478,6 +499,30 @@ final class MenuBarDisplayModeTests: XCTestCase {
         XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
                        "C 5h 78% / 95% · X 5h 99% / 82%")
     }
+
+    func test_iconAnd5hWeekly_weeklyInPrimary_showsWeeklyValueUnderWeeklySlot() {
+        let weekly = CodexUsageWindow(usedPercent: 18, windowDurationMins: 10080, resetsAt: nil)
+        let snapshot = CodexUsageSnapshot(
+            primary: weekly, secondary: nil,
+            planType: "plus", creditsBalance: nil, rateLimitReachedType: nil
+        )
+        let codex = makeCodexStatus(usage: CodexUsage(snapshot: snapshot, error: nil))
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22, sevenDay: 5))
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
+                       "C 5h 78% / 95% · X 5h — / 82%")
+    }
+
+    func test_iconAnd5h_omits5hWhenNo300Window() {
+        let weekly = CodexUsageWindow(usedPercent: 18, windowDurationMins: 10080, resetsAt: nil)
+        let snapshot = CodexUsageSnapshot(
+            primary: weekly, secondary: nil,
+            planType: "plus", creditsBalance: nil, rateLimitReachedType: nil
+        )
+        let codex = makeCodexStatus(usage: CodexUsage(snapshot: snapshot, error: nil))
+        let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22))
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+                       "C 78% · X —")
+    }
 }
 
 final class CodexUsageParserTests: XCTestCase {
@@ -656,5 +701,62 @@ final class DefaultCodexBinaryTests: XCTestCase {
             fileExists: { _ in false }
         )
         XCTAssertEqual(path, "/usr/local/bin/codex")
+    }
+}
+
+final class CodexUsageSnapshotWindowLookupTests: XCTestCase {
+    private func window(used: Double, duration: Int?, resetsAt: Date? = nil) -> CodexUsageWindow {
+        CodexUsageWindow(usedPercent: used, windowDurationMins: duration, resetsAt: resetsAt)
+    }
+
+    func testFiveHourWindow_findsWindowByDuration300_regardlessOfPosition() {
+        let fiveHour = window(used: 10, duration: 300)
+        let weekly = window(used: 20, duration: 10080)
+        let snapshot = CodexUsageSnapshot(
+            primary: weekly, secondary: fiveHour,
+            planType: nil, creditsBalance: nil, rateLimitReachedType: nil
+        )
+        XCTAssertEqual(snapshot.fiveHourWindow, fiveHour)
+    }
+
+    func testFiveHourWindow_returnsNil_whenNoWindowHas300Mins() {
+        let weekly = window(used: 20, duration: 10080)
+        let snapshot = CodexUsageSnapshot(
+            primary: weekly, secondary: nil,
+            planType: nil, creditsBalance: nil, rateLimitReachedType: nil
+        )
+        XCTAssertNil(snapshot.fiveHourWindow)
+    }
+
+    func testWeeklyWindow_findsWindowByDuration10080_inPrimarySlot() {
+        let weekly = window(used: 20, duration: 10080)
+        let snapshot = CodexUsageSnapshot(
+            primary: weekly, secondary: nil,
+            planType: nil, creditsBalance: nil, rateLimitReachedType: nil
+        )
+        XCTAssertEqual(snapshot.weeklyWindow, weekly)
+    }
+
+    func testRateLimitWindowLabel_300_is5h5h() {
+        let labels = RateLimitWindowLabel.labels(forDurationMins: 300)
+        XCTAssertEqual(labels.short, "5h")
+        XCTAssertEqual(labels.long, "5h")
+    }
+
+    func testRateLimitWindowLabel_10080_isWkWeekly() {
+        let labels = RateLimitWindowLabel.labels(forDurationMins: 10080)
+        XCTAssertEqual(labels.short, "wk")
+        XCTAssertEqual(labels.long, "Weekly")
+    }
+
+    func testRateLimitWindowLabel_unknownDuration_computesLabel() {
+        let labels = RateLimitWindowLabel.labels(forDurationMins: 1440)
+        XCTAssertEqual(labels.short, "24h")
+    }
+
+    func testRateLimitWindowLabel_nilDuration_returnsSensibleFallback() {
+        let labels = RateLimitWindowLabel.labels(forDurationMins: nil)
+        XCTAssertEqual(labels.short, "?")
+        XCTAssertEqual(labels.long, "Unknown")
     }
 }

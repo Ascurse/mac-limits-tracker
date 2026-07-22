@@ -32,14 +32,14 @@ public enum MenuBarDisplayMode: String, CaseIterable, Identifiable {
 
         case .iconAnd5h:
             let c = Self.formatRemaining(claude?.usage?.fiveHour?.utilizationPercent)
-            let x = Self.formatRemaining(codex?.usage?.snapshot?.primary?.usedPercent)
+            let x = Self.formatRemaining(codex?.usage?.snapshot?.fiveHourWindow?.usedPercent)
             return "C \(c) · X \(x)"
 
         case .iconAnd5hWeekly:
             let c5 = Self.formatRemaining(claude?.usage?.fiveHour?.utilizationPercent)
             let cW = Self.formatRemaining(claude?.usage?.sevenDay?.utilizationPercent)
-            let x5 = Self.formatRemaining(codex?.usage?.snapshot?.primary?.usedPercent)
-            let xW = Self.formatRemaining(codex?.usage?.snapshot?.secondary?.usedPercent)
+            let x5 = Self.formatRemaining(codex?.usage?.snapshot?.fiveHourWindow?.usedPercent)
+            let xW = Self.formatRemaining(codex?.usage?.snapshot?.weeklyWindow?.usedPercent)
             return "C 5h \(c5) / \(cW) · X 5h \(x5) / \(xW)"
 
         case .iconOnly:
