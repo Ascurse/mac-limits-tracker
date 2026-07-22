@@ -214,13 +214,13 @@ final class ClaudeLimitsProviderTests: XCTestCase {
             keychainReader: { throw StubError() },
             httpGet: { _, _ in throw StubError() }
         )
-        let status = await provider.fetch()
-        XCTAssertTrue(status.providerError?.contains("claude auth status failed") ?? false)
-        XCTAssertTrue(status.providerError?.contains("stats cache read failed") ?? false)
+        let snapshot = await provider.fetch()
+        XCTAssertTrue(snapshot.providerError?.contains("claude auth status failed") ?? false)
+        XCTAssertTrue(snapshot.providerError?.contains("stats cache read failed") ?? false)
         // Failure keychain/usage должна попасть в usageError, а не в providerError.
-        XCTAssertNil(status.usage)
-        XCTAssertNotNil(status.usageError)
-        XCTAssertFalse(status.providerError?.contains("usage") ?? true)
+        XCTAssertNil(snapshot.windows)
+        XCTAssertNotNil(snapshot.usageError)
+        XCTAssertFalse(snapshot.providerError?.contains("usage") ?? true)
     }
 
     func test_fetchReportsOnlyStatsCacheErrorWhenAuthSucceeds() async {
@@ -235,10 +235,10 @@ final class ClaudeLimitsProviderTests: XCTestCase {
             keychainReader: { throw StubError() },
             httpGet: { _, _ in throw StubError() }
         )
-        let status = await provider.fetch()
-        XCTAssertTrue(status.providerError?.hasPrefix("stats cache read failed") ?? false)
-        XCTAssertFalse(status.providerError?.contains("claude auth status failed") ?? true)
-        XCTAssertNotNil(status.usageError)
+        let snapshot = await provider.fetch()
+        XCTAssertTrue(snapshot.providerError?.hasPrefix("stats cache read failed") ?? false)
+        XCTAssertFalse(snapshot.providerError?.contains("claude auth status failed") ?? true)
+        XCTAssertNotNil(snapshot.usageError)
     }
 
     func test_fetchPopulatesUsageFromKeychainAndHttp() async throws {
@@ -264,18 +264,18 @@ final class ClaudeLimitsProviderTests: XCTestCase {
                 return usageJSON
             }
         )
-        let status = await provider.fetch()
-        XCTAssertNil(status.providerError)
-        let usage = try XCTUnwrap(status.usage)
-        let fiveHour = try XCTUnwrap(usage.fiveHour)
-        let sevenDay = try XCTUnwrap(usage.sevenDay)
-        XCTAssertEqual(fiveHour.utilizationPercent, 11.0, accuracy: 0.001)
-        XCTAssertEqual(sevenDay.utilizationPercent, 22.0, accuracy: 0.001)
+        let snapshot = await provider.fetch()
+        XCTAssertNil(snapshot.providerError)
+        let windows = try XCTUnwrap(snapshot.windows)
+        let fiveHour = try XCTUnwrap(windows.first { $0.windowDurationMins == 300 })
+        let sevenDay = try XCTUnwrap(windows.first { $0.windowDurationMins == 10080 })
+        XCTAssertEqual(try XCTUnwrap(fiveHour.usedPercent), 11.0, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(sevenDay.usedPercent), 22.0, accuracy: 0.001)
         XCTAssertNotNil(fiveHour.resetsAt)
         XCTAssertNotNil(sevenDay.resetsAt)
         XCTAssertEqual(requestedBearer, "tok-abc")
         XCTAssertEqual(requestedURL?.absoluteString, "https://claude.ai/api/oauth/usage")
-        XCTAssertNil(status.usageError)
+        XCTAssertNil(snapshot.usageError)
     }
 
     func test_usageErrorWhenTokenExpired() async {
@@ -293,9 +293,9 @@ final class ClaudeLimitsProviderTests: XCTestCase {
             keychainReader: { credentialsJSON },
             httpGet: { _, _ in httpCalled = true; return Data() }
         )
-        let status = await provider.fetch()
-        XCTAssertNil(status.usage)
-        XCTAssertTrue(status.usageError?.contains("expired") ?? false)
+        let snapshot = await provider.fetch()
+        XCTAssertNil(snapshot.windows)
+        XCTAssertTrue(snapshot.usageError?.contains("expired") ?? false)
         XCTAssertFalse(httpCalled)
     }
 
@@ -309,9 +309,9 @@ final class ClaudeLimitsProviderTests: XCTestCase {
             keychainReader: { throw StubError() },
             httpGet: { _, _ in throw StubError() }
         )
-        let status = await provider.fetch()
-        XCTAssertNil(status.usage)
-        XCTAssertTrue(status.usageError?.contains("claude.ai") ?? false)
+        let snapshot = await provider.fetch()
+        XCTAssertNil(snapshot.windows)
+        XCTAssertTrue(snapshot.usageError?.contains("claude.ai") ?? false)
     }
 }
 
@@ -375,6 +375,22 @@ final class ClaudeKeychainCredentialsParserTests: XCTestCase {
 
 final class MenuBarDisplayModeTests: XCTestCase {
     private static let sentinel = Date(timeIntervalSince1970: 0)
+
+    private static let claudeDescriptor = ProviderDescriptor(
+        id: "claude", displayName: "Claude Code", shortName: "Claude",
+        menuBarSymbol: "C", accentColorHex: 0xFF9E64, loginHelp: nil
+    )
+    private static let codexDescriptor = ProviderDescriptor(
+        id: "codex", displayName: "Codex", shortName: "Codex",
+        menuBarSymbol: "X", accentColorHex: 0x9ECE6A, loginHelp: nil
+    )
+
+    private func states(claude: ClaudeStatus?, codex: CodexStatus?) -> [ProviderState] {
+        [
+            ProviderState(descriptor: Self.claudeDescriptor, snapshot: claude?.toSnapshot()),
+            ProviderState(descriptor: Self.codexDescriptor, snapshot: codex?.toSnapshot())
+        ]
+    }
 
     private func makeClaudeStatus(
         subscriptionType: String? = "max",
@@ -443,60 +459,60 @@ final class MenuBarDisplayModeTests: XCTestCase {
     func test_iconAndText_showsPlanNames() {
         let claude = makeClaudeStatus()
         let codex = makeCodexStatus()
-        XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(states: states(claude: claude, codex: codex)),
                        "Claude: Max · Codex: Plus")
     }
 
     func test_iconAnd5h_showsPercentRemaining() {
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22))
         let codex = makeCodexStatus()
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(states: states(claude: claude, codex: codex)),
                        "C 78% · X —")
     }
 
     func test_iconAnd5hWeekly_showsPercentAndWeekly() {
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22, sevenDay: 5))
         let codex = makeCodexStatus()
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(states: states(claude: claude, codex: codex)),
                        "C 5h 78% / 95% · X 5h — / —")
     }
 
     func test_iconOnly_returnsNil() {
-        XCTAssertNil(MenuBarDisplayMode.iconOnly.menuBarText(claude: makeClaudeStatus(),
-                                                             codex: makeCodexStatus()))
+        XCTAssertNil(MenuBarDisplayMode.iconOnly.menuBarText(
+            states: states(claude: makeClaudeStatus(), codex: makeCodexStatus())))
     }
 
     func test_claudeNil_showsDashes() {
         let codex = makeCodexStatus()
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: nil, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(states: states(claude: nil, codex: codex)),
                        "C — · X —")
     }
 
     func test_fiveHourNil_showsDash() {
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: nil, sevenDay: 10))
         let codex = makeCodexStatus()
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(states: states(claude: claude, codex: codex)),
                        "C — · X —")
     }
 
     func test_codexPlanFallsBackToCodex() {
         let claude = makeClaudeStatus(subscriptionType: nil)
         let codex = makeCodexStatus(planType: nil)
-        XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAndText.menuBarText(states: states(claude: claude, codex: codex)),
                        "Claude: Claude · Codex: Codex")
     }
 
     func test_iconAnd5h_showsCodexPercentFromUsage() {
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22))
         let codex = makeCodexStatus(usage: makeCodexUsage(primary: 1))
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(states: states(claude: claude, codex: codex)),
                        "C 78% · X 99%")
     }
 
     func test_iconAnd5hWeekly_showsCodexWindowsFromUsage() {
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22, sevenDay: 5))
         let codex = makeCodexStatus(usage: makeCodexUsage(primary: 1, secondary: 18))
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(states: states(claude: claude, codex: codex)),
                        "C 5h 78% / 95% · X 5h 99% / 82%")
     }
 
@@ -508,7 +524,7 @@ final class MenuBarDisplayModeTests: XCTestCase {
         )
         let codex = makeCodexStatus(usage: CodexUsage(snapshot: snapshot, error: nil))
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22, sevenDay: 5))
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5hWeekly.menuBarText(states: states(claude: claude, codex: codex)),
                        "C 5h 78% / 95% · X 5h — / 82%")
     }
 
@@ -520,7 +536,7 @@ final class MenuBarDisplayModeTests: XCTestCase {
         )
         let codex = makeCodexStatus(usage: CodexUsage(snapshot: snapshot, error: nil))
         let claude = makeClaudeStatus(usage: makeUsage(fiveHour: 22))
-        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(claude: claude, codex: codex),
+        XCTAssertEqual(MenuBarDisplayMode.iconAnd5h.menuBarText(states: states(claude: claude, codex: codex)),
                        "C 78% · X —")
     }
 }
@@ -618,18 +634,19 @@ final class CodexLimitsProviderTests: XCTestCase {
             },
             appServerReader: { rateLimitsEnvelope }
         )
-        let status = await provider.fetch()
-        XCTAssertNil(status.providerError)
-        XCTAssertTrue(status.loggedIn)
-        let usage = try XCTUnwrap(status.usage)
-        let snap = try XCTUnwrap(usage.snapshot)
-        XCTAssertEqual(snap.planType, "plus")
-        XCTAssertEqual(try XCTUnwrap(snap.primary).usedPercent, 5, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(snap.secondary).usedPercent, 42, accuracy: 0.001)
-        XCTAssertEqual(snap.creditsBalance, "3")
-        XCTAssertNil(status.usageError)
-        // menuTitle использует planType из app-server.
-        XCTAssertEqual(status.menuTitle, "Codex: Plus")
+        let snapshot = await provider.fetch()
+        XCTAssertNil(snapshot.providerError)
+        XCTAssertTrue(snapshot.loggedIn)
+        let windows = try XCTUnwrap(snapshot.windows)
+        let fiveHour = try XCTUnwrap(windows.first { $0.windowDurationMins == 300 })
+        let weekly = try XCTUnwrap(windows.first { $0.windowDurationMins == 10080 })
+        XCTAssertEqual(snapshot.plan, "plus")
+        XCTAssertEqual(try XCTUnwrap(fiveHour.usedPercent), 5, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(weekly.usedPercent), 42, accuracy: 0.001)
+        XCTAssertEqual(snapshot.creditsBalance, "3")
+        XCTAssertNil(snapshot.usageError)
+        // menuTitle использует plan из app-server (live-first).
+        XCTAssertEqual(snapshot.menuTitle(shortName: "Codex"), "Codex: Plus")
     }
 
     func test_usageErrorWhenAppServerThrows() async {
@@ -640,13 +657,13 @@ final class CodexLimitsProviderTests: XCTestCase {
             },
             appServerReader: { throw StubError() }
         )
-        let status = await provider.fetch()
-        XCTAssertNil(status.providerError)
-        XCTAssertTrue(status.loggedIn)
-        XCTAssertNil(status.usage?.snapshot)
-        XCTAssertNotNil(status.usageError)
+        let snapshot = await provider.fetch()
+        XCTAssertNil(snapshot.providerError)
+        XCTAssertTrue(snapshot.loggedIn)
+        XCTAssertNil(snapshot.windows)
+        XCTAssertNotNil(snapshot.usageError)
         // JWT plan остаётся как fallback.
-        XCTAssertEqual(status.menuTitle, "Codex: Plus")
+        XCTAssertEqual(snapshot.menuTitle(shortName: "Codex"), "Codex: Plus")
     }
 
     func test_usageErrorWhenAppServerReturnsNullRateLimits() async {
@@ -658,11 +675,11 @@ final class CodexLimitsProviderTests: XCTestCase {
             fileReader: { _ in self.authFile(self.jwtPlanOnly("free")) },
             appServerReader: { envelope }
         )
-        let status = await provider.fetch()
-        XCTAssertNil(status.providerError)
-        XCTAssertNil(status.usage?.snapshot)
-        XCTAssertNotNil(status.usageError)
-        XCTAssertEqual(status.menuTitle, "Codex: Free")
+        let snapshot = await provider.fetch()
+        XCTAssertNil(snapshot.providerError)
+        XCTAssertNil(snapshot.windows)
+        XCTAssertNotNil(snapshot.usageError)
+        XCTAssertEqual(snapshot.menuTitle(shortName: "Codex"), "Codex: Free")
     }
 
     func test_providerErrorWhenAuthJSONMissing() async {
@@ -671,10 +688,10 @@ final class CodexLimitsProviderTests: XCTestCase {
             fileReader: { _ in throw StubError() },
             appServerReader: { Data(#"{"id":2,"result":{}}"#.utf8) }
         )
-        let status = await provider.fetch()
-        XCTAssertNotNil(status.providerError)
-        XCTAssertFalse(status.loggedIn)
-        XCTAssertNil(status.usage)
+        let snapshot = await provider.fetch()
+        XCTAssertNotNil(snapshot.providerError)
+        XCTAssertFalse(snapshot.loggedIn)
+        XCTAssertNil(snapshot.windows)
     }
 }
 

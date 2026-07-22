@@ -32,19 +32,14 @@ public struct WindowContent: Equatable {
     public let severity: Severity
 }
 
-public enum PopupProvider: Equatable {
-    case claude
-    case codex
-}
-
 /// Секция попапа одного провайдера.
 public struct ProviderSectionContent: Equatable {
-    public let provider: PopupProvider
+    public let descriptor: ProviderDescriptor
     public let title: String
     public let rows: [PopupRow]
 }
 
-/// Сборка секций попапа из статусов провайдеров. Чистые функции — покрыты тестами.
+/// Сборка секций попапа из состояний провайдеров. Чистые функции — покрыты тестами.
 public enum PopupContentBuilder {
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -66,62 +61,34 @@ public enum PopupContentBuilder {
         return f
     }()
 
-    public static func claudeSection(_ status: ClaudeStatus?, now: Date = Date()) -> ProviderSectionContent {
-        var rows: [PopupRow] = []
-        if let c = status {
-            if let e = c.providerError {
-                rows.append(.error(e))
-            } else {
-                rows.append(.detail(key: "Plan", value: c.subscriptionType ?? "—"))
-                if let u = c.usage {
-                    rows.append(windowRow(short: "5h", long: "5h",
-                                          remaining: u.fiveHour.map { max(0, 100 - $0.utilizationPercent) },
-                                          resetsAt: u.fiveHour?.resetsAt, now: now,
-                                          unavailable: "5h usage unavailable"))
-                    rows.append(windowRow(short: "wk", long: "Weekly",
-                                          remaining: u.sevenDay.map { max(0, 100 - $0.utilizationPercent) },
-                                          resetsAt: u.sevenDay?.resetsAt, now: now,
-                                          unavailable: "Weekly usage unavailable"))
-                } else if let ue = c.usageError {
-                    rows.append(.error(ue))
-                } else {
-                    rows.append(.note("Loading usage…"))
-                }
-            }
-        } else {
-            rows.append(.note("Loading…"))
-        }
-        return ProviderSectionContent(provider: .claude, title: "Claude Code", rows: rows)
+    /// Единая сборка секции попапа для любого провайдера — надмножество прежних
+    /// `claudeSection`/`codexSection`: у Claude просто нет details/credits/renewal
+    /// (мапперы оставляют эти поля snapshot'а пустыми).
+    public static func section(_ state: ProviderState, now: Date = Date()) -> ProviderSectionContent {
+        ProviderSectionContent(descriptor: state.descriptor,
+                               title: state.descriptor.displayName,
+                               rows: rows(for: state.snapshot, now: now))
     }
 
-    public static func codexSection(_ status: CodexStatus?, now: Date = Date()) -> ProviderSectionContent {
-        var rows: [PopupRow] = []
-        if let x = status {
-            if let e = x.providerError {
-                rows.append(.error(e))
-            } else {
-                // Приоритет: live planType из app-server над JWT-claimом.
-                let plan = x.usage?.snapshot?.planType ?? x.planType
-                rows.append(.detail(key: "Plan", value: plan ?? "—"))
-                if let snap = x.usage?.snapshot {
-                    rows.append(contentsOf: codexUsageRows(snap, now: now))
-                } else if let ue = x.usageError {
-                    rows.append(.error(ue))
-                } else {
-                    rows.append(.note("Loading usage…"))
-                }
-                rows.append(contentsOf: codexAccountRows(x))
-                rows.append(contentsOf: codexRenewalRows(x, now: now))
-            }
-        } else {
-            rows.append(.note("Loading…"))
-        }
-        return ProviderSectionContent(provider: .codex, title: "Codex", rows: rows)
+    private static func rows(for snapshot: LimitsSnapshot?, now: Date) -> [PopupRow] {
+        guard let snap = snapshot else { return [.note("Loading…")] }
+        if let e = snap.providerError { return [.error(e)] }
+
+        var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
+        rows.append(contentsOf: usageRows(snap, now: now))
+        rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
+        rows.append(contentsOf: renewalRows(snap, now: now))
+        return rows
     }
 
-    /// Строки окон + кредиты + ошибка rate-limit из снапшота Codex.
-    private static func codexUsageRows(_ snap: CodexUsageSnapshot, now: Date) -> [PopupRow] {
-        var rows = codexWindowRows(snap, now: now)
+    /// Окна + кредиты + ошибка rate-limit; либо usageError, либо «Loading usage…»,
+    /// если usage ещё не загружен.
+    private static func usageRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {
+        guard let windows = snap.windows else {
+            if let ue = snap.usageError { return [.error(ue)] }
+            return [.note("Loading usage…")]
+        }
+        var rows = windowRows(windows, now: now)
         if let bal = snap.creditsBalance, !bal.isEmpty {
             rows.append(.detail(key: "Credits", value: bal))
         }
@@ -131,50 +98,31 @@ public enum PopupContentBuilder {
         return rows
     }
 
-    /// Все окна снапшота (primary+secondary), любой длительности — ни одно не пропадает молча.
-    /// Порядок: 5h первым, weekly вторым, прочие — по возрастанию длительности, nil-длительность в конце.
-    private static func codexWindowRows(_ snap: CodexUsageSnapshot, now: Date) -> [PopupRow] {
-        let windows = [snap.primary, snap.secondary].compactMap { $0 }
-        return windows.sorted { codexWindowSortKey($0) < codexWindowSortKey($1) }.map { w in
+    /// Окна снапшота в уже заданном мапперами порядке; `usedPercent == nil` — слот
+    /// заявлен, данных нет («… usage unavailable», раньше было только у Claude).
+    private static func windowRows(_ windows: [SnapshotWindow], now: Date) -> [PopupRow] {
+        windows.map { w in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
             return windowRow(short: labels.short, long: labels.long,
-                             remaining: max(0, 100 - w.usedPercent),
-                             resetsAt: w.resetsAt, now: now)
+                             remaining: w.usedPercent.map { max(0, 100 - $0) },
+                             resetsAt: w.resetsAt, now: now,
+                             unavailable: "\(labels.long) usage unavailable")
         }
     }
 
-    private static func codexWindowSortKey(_ w: CodexUsageWindow) -> (Int, Int) {
-        switch w.windowDurationMins {
-        case 300: return (0, 0)
-        case 10080: return (1, 0)
-        case .some(let mins): return (2, mins)
-        case .none: return (3, Int.max)
-        }
-    }
-
-    private static func codexAccountRows(_ x: CodexStatus) -> [PopupRow] {
+    private static func renewalRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {
         var rows: [PopupRow] = []
-        if let auth = x.authMode { rows.append(.detail(key: "Auth", value: auth)) }
-        if let email = x.email { rows.append(.detail(key: "Account", value: email)) }
-        if let owner = x.accountOwner { rows.append(.detail(key: "Org", value: owner)) }
-        return rows
-    }
-
-    private static func codexRenewalRows(_ x: CodexStatus, now: Date) -> [PopupRow] {
-        var rows: [PopupRow] = []
-        if let days = x.daysUntilRenewal {
+        if let days = snap.daysUntilRenewal {
             rows.append(.detail(key: "Renews in", value: "\(days) days"))
         }
-        if let until = x.subscriptionActiveUntil, until > now {
+        if let until = snap.renewalDate, until > now {
             rows.append(.detail(key: "Renews", value: dateFormatter.string(from: until)))
         }
         return rows
     }
 
-    public static func updatedText(claude: ClaudeStatus?, codex: CodexStatus?) -> String {
-        let claudeFetched = claude?.fetchedAt ?? .distantPast
-        let codexFetched = codex?.fetchedAt ?? .distantPast
-        let latest = max(claudeFetched, codexFetched)
+    public static func updatedText(states: [ProviderState]) -> String {
+        let latest = states.map { $0.snapshot?.fetchedAt ?? .distantPast }.max() ?? .distantPast
         if latest == .distantPast { return "—" }
         return "Updated \(timeFormatter.string(from: latest))"
     }

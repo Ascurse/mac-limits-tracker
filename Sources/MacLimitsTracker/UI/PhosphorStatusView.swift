@@ -20,8 +20,9 @@ struct PhosphorStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            section(PopupContentBuilder.claudeSection(viewModel.claude), name: "CLAUDE CODE", showOpenClaude: true)
-            section(PopupContentBuilder.codexSection(viewModel.codex), name: "CODEX")
+            ForEach(viewModel.states) { state in
+                section(PopupContentBuilder.section(state))
+            }
             promptLine
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.mid)
@@ -36,7 +37,7 @@ struct PhosphorStatusView: View {
 
     private var header: some View {
         HStack {
-            Text("~/limits — \(PopupContentBuilder.updatedText(claude: viewModel.claude, codex: viewModel.codex).lowercased())")
+            Text("~/limits — \(PopupContentBuilder.updatedText(states: viewModel.states).lowercased())")
                 .foregroundStyle(Palette.mid)
             Spacer()
             Button {
@@ -65,23 +66,23 @@ struct PhosphorStatusView: View {
         }
     }
 
-    private func section(_ s: ProviderSectionContent, name: String, showOpenClaude: Bool = false) -> some View {
+    private func section(_ s: ProviderSectionContent) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text("▸ \(name)").foregroundStyle(Palette.heading)
+                Text("▸ \(s.title.uppercased())").foregroundStyle(Palette.heading)
                 if case .detail(let key, let value) = s.rows.first, key == "Plan" {
                     Text("[\(value)]").foregroundStyle(Palette.mid)
                 }
                 Spacer()
-                if showOpenClaude {
+                if let loginHelp = s.descriptor.loginHelp {
                     Button {
-                        openClaudeCode()
+                        openProviderCLI(loginHelp)
                     } label: {
                         Text("[open]").foregroundStyle(Palette.bright)
                     }
                     .buttonStyle(.plain)
-                    .help("Open Claude Code to refresh the claude.ai login")
-                    .accessibilityLabel("Open Claude Code")
+                    .help(loginHelp.helpText)
+                    .accessibilityLabel("Open \(s.title)")
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in

@@ -22,7 +22,7 @@ struct MacLimitsTrackerApp: App {
             Group {
                 if displayMode == .iconOnly {
                     Image(systemName: viewModel.statusIcon)
-                } else if let text = displayMode.menuBarText(claude: viewModel.claude, codex: viewModel.codex) {
+                } else if let text = displayMode.menuBarText(states: viewModel.states) {
                     HStack {
                         Image(systemName: viewModel.statusIcon)
                         Text(text).font(.caption).monospacedDigit()
@@ -47,15 +47,15 @@ struct MacLimitsTrackerApp: App {
 extension LimitsViewModel {
     var statusIcon: String {
         if isRefreshing { return "arrow.triangle.2.circlepath" }
-        if claude?.providerError != nil || codex?.providerError != nil {
+        if states.contains(where: { $0.snapshot?.providerError != nil }) {
             return "exclamationmark.triangle"
         }
         return "gauge.with.dots.needle.bottom.50percent"
     }
 
     var statusTitle: String {
-        let c = claude?.menuTitle ?? "Claude"
-        let x = codex?.menuTitle ?? "Codex"
-        return "\(c) · \(x)"
+        states.map { state in
+            state.snapshot?.menuTitle(shortName: state.descriptor.shortName) ?? state.descriptor.shortName
+        }.joined(separator: " · ")
     }
 }

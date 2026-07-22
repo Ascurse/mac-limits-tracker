@@ -1,23 +1,15 @@
 import Foundation
 
 /// Форматирование остатков и ресетов лимитов — общее для меню-бара и десктоп-виджета.
+/// Общая для всех провайдеров: `usedPercent` — использованная доля (0…100),
+/// осталось = разница (было раздельно `claudeRemainingPercent`/`codexRemainingPercent`).
 public enum LimitsFormatting {
-    /// utilization — использованная доля (0…100); осталось — разница.
-    public static func claudeRemainingPercent(_ window: ClaudeUsageWindow) -> Double {
-        max(0, 100 - window.utilizationPercent)
+    public static func remainingPercent(usedPercent: Double) -> Double {
+        max(0, 100 - usedPercent)
     }
 
-    /// usedPercent — ИСПОЛЬЗОВАНО; остаётся = 100 − это (зеркало claudeRemainingPercent).
-    public static func codexRemainingPercent(_ window: CodexUsageWindow) -> Double {
-        max(0, 100 - window.usedPercent)
-    }
-
-    public static func claudeRemainingText(_ window: ClaudeUsageWindow) -> String {
-        String(format: "%.0f%%", claudeRemainingPercent(window))
-    }
-
-    public static func codexRemainingText(_ window: CodexUsageWindow) -> String {
-        String(format: "%.0f%%", codexRemainingPercent(window))
+    public static func remainingText(usedPercent: Double) -> String {
+        String(format: "%.0f%%", remainingPercent(usedPercent: usedPercent))
     }
 
     public static func resetText(resetsAt: Date?, relativeTo now: Date = Date()) -> String {

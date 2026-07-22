@@ -2,34 +2,20 @@ import XCTest
 @testable import MacLimitsTrackerCore
 
 final class LimitsFormattingTests: XCTestCase {
-    private func claudeWindow(_ utilization: Double, resetsAt: Date? = nil) -> ClaudeUsageWindow {
-        ClaudeUsageWindow(utilizationPercent: utilization, resetsAt: resetsAt,
-                          limitDollars: nil, usedDollars: nil, remainingDollars: nil)
+    func test_remainingPercentInvertsUsedPercent() {
+        XCTAssertEqual(LimitsFormatting.remainingPercent(usedPercent: 22), 78, accuracy: 0.001)
+        XCTAssertEqual(LimitsFormatting.remainingPercent(usedPercent: 0), 100, accuracy: 0.001)
+        XCTAssertEqual(LimitsFormatting.remainingPercent(usedPercent: 100), 0, accuracy: 0.001)
     }
 
-    private func codexWindow(_ used: Double, resetsAt: Date? = nil) -> CodexUsageWindow {
-        CodexUsageWindow(usedPercent: used, windowDurationMins: 300, resetsAt: resetsAt)
-    }
-
-    func test_claudeRemainingPercentInvertsUtilization() {
-        XCTAssertEqual(LimitsFormatting.claudeRemainingPercent(claudeWindow(22)), 78, accuracy: 0.001)
-        XCTAssertEqual(LimitsFormatting.claudeRemainingPercent(claudeWindow(0)), 100, accuracy: 0.001)
-        XCTAssertEqual(LimitsFormatting.claudeRemainingPercent(claudeWindow(100)), 0, accuracy: 0.001)
-    }
-
-    func test_claudeRemainingPercentFloorsAtZero() {
-        XCTAssertEqual(LimitsFormatting.claudeRemainingPercent(claudeWindow(150)), 0, accuracy: 0.001)
-    }
-
-    func test_codexRemainingPercentInvertsUsedPercent() {
-        XCTAssertEqual(LimitsFormatting.codexRemainingPercent(codexWindow(1)), 99, accuracy: 0.001)
-        XCTAssertEqual(LimitsFormatting.codexRemainingPercent(codexWindow(100)), 0, accuracy: 0.001)
-        XCTAssertEqual(LimitsFormatting.codexRemainingPercent(codexWindow(120)), 0, accuracy: 0.001)
+    func test_remainingPercentFloorsAtZero() {
+        XCTAssertEqual(LimitsFormatting.remainingPercent(usedPercent: 150), 0, accuracy: 0.001)
+        XCTAssertEqual(LimitsFormatting.remainingPercent(usedPercent: 120), 0, accuracy: 0.001)
     }
 
     func test_remainingTextFormatsWholePercents() {
-        XCTAssertEqual(LimitsFormatting.claudeRemainingText(claudeWindow(22.4)), "78%")
-        XCTAssertEqual(LimitsFormatting.codexRemainingText(codexWindow(1)), "99%")
+        XCTAssertEqual(LimitsFormatting.remainingText(usedPercent: 22.4), "78%")
+        XCTAssertEqual(LimitsFormatting.remainingText(usedPercent: 1), "99%")
     }
 
     func test_resetTextReturnsDashForNil() {

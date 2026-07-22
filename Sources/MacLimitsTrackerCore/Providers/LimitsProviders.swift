@@ -2,7 +2,12 @@ import Foundation
 import Security
 
 /// Источник данных о лимитах Claude Code.
-public struct ClaudeLimitsProvider {
+/// `@unchecked Sendable`: замыкания-зависимости сами по себе не Sendable, но в проде они
+/// (`ProcessRunner.run`, `KeychainStore.readClaudeCodeCredentials`, `Http.httpGet`) без
+/// состояния и безопасны при повторных/параллельных вызовах. DI-замыкания в тестах, которые
+/// пишут в захваченные `var`, полагаются на то, что тест не гоняет `fetch()` параллельно с
+/// самим собой — если такое понадобится, нужен другой примитив, не просто эта аннотация.
+public struct ClaudeLimitsProvider: @unchecked Sendable {
     let claudeBinary: String
     let statsCacheURL: URL
     let processRunner: (String, [String]) async throws -> Data
@@ -32,7 +37,7 @@ public struct ClaudeLimitsProvider {
         self.httpGet = httpGet
     }
 
-    public func fetch() async -> ClaudeStatus {
+    func fetchStatus() async -> ClaudeStatus {
         let now = Date()
         var auth: ClaudeAuthStatus?
         var stats: StatsCache?
@@ -98,7 +103,8 @@ public struct ClaudeLimitsProvider {
 }
 
 /// Источник данных о лимитах Codex.
-public struct CodexLimitsProvider {
+/// `@unchecked Sendable`: см. комментарий у `ClaudeLimitsProvider`.
+public struct CodexLimitsProvider: @unchecked Sendable {
     let authFileURL: URL
     let fileReader: (URL) async throws -> Data
     /// Выполняет init + `account/rateLimits/read` через `codex app-server`, возвращает
@@ -122,7 +128,7 @@ public struct CodexLimitsProvider {
         }
     }
 
-    public func fetch() async -> CodexStatus {
+    func fetchStatus() async -> CodexStatus {
         let now = Date()
         do {
             let data = try await fileReader(authFileURL)
