@@ -23,6 +23,8 @@ struct PopupFooter: View {
             .pickerStyle(.menu)
             .controlSize(.mini)
 
+            providerSettingsSection
+
             HStack {
                 Toggle("Auto-refresh (5 min)", isOn: Binding(
                     get: { viewModel.autoRefresh },
@@ -48,6 +50,54 @@ struct PopupFooter: View {
                 .controlSize(.mini)
                 .keyboardShortcut("q", modifiers: .command)
             }
+        }
+    }
+
+    /// Список провайдеров реестра (включая выключенных): чекбокс включения +
+    /// кнопки вверх/вниз для смены порядка секций попапа. bd mac-limits-tracker-6gk.2.
+    private var providerSettingsSection: some View {
+        let entries = viewModel.providerSettingsWithDescriptors
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Providers")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(Array(entries.enumerated()), id: \.element.setting.id) { index, entry in
+                providerRow(entry, isFirst: index == 0, isLast: index == entries.count - 1)
+            }
+        }
+    }
+
+    private func providerRow(
+        _ entry: (setting: ProviderSetting, descriptor: ProviderDescriptor),
+        isFirst: Bool, isLast: Bool
+    ) -> some View {
+        HStack(spacing: 4) {
+            Toggle(entry.descriptor.displayName, isOn: Binding(
+                get: { entry.setting.isEnabled },
+                set: { viewModel.setProviderEnabled($0, id: entry.setting.id) }
+            ))
+            .toggleStyle(.checkbox)
+            .controlSize(.mini)
+            Spacer()
+            Button {
+                viewModel.moveProviderUp(id: entry.setting.id)
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.mini)
+            .disabled(isFirst)
+            .accessibilityLabel("Move \(entry.descriptor.displayName) up")
+
+            Button {
+                viewModel.moveProviderDown(id: entry.setting.id)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.mini)
+            .disabled(isLast)
+            .accessibilityLabel("Move \(entry.descriptor.displayName) down")
         }
     }
 }

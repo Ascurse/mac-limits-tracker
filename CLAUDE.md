@@ -88,6 +88,12 @@ Swift Package с тремя таргетами:
   (`KimiLimitsProvider.hasUsableCredentials`) — скрыт из попапа/меню-бара/виджета
   без единой правки в UI-слое. `LimitsViewModel` держит `states: [ProviderState]`
   (дескриптор + последний снапшот), обновляет их параллельно через `TaskGroup`.
+  Включённость и порядок провайдеров хранит `ProviderSettingsStore`
+  (`Providers/ProviderSettingsStore.swift`) в `UserDefaults` —
+  `LimitsViewModel.providerSettings`/`setProviderEnabled`/
+  `moveProviderUp`/`moveProviderDown`; выключенный провайдер не опрашивается и
+  не попадает в `states`, порядок секций попапа/виджета/меню-бара следует
+  сохранённому (bd mac-limits-tracker-6gk.2).
 - **MacLimitsTracker** — SwiftUI app (menu-bar + попап в 4 темах + десктоп-виджет).
   Темы (`UI/*StatusView.swift`) рендерят `PopupContentBuilder.section(state:)` —
   ни одна тема не знает о конкретном провайдере, только `ProviderDescriptor`

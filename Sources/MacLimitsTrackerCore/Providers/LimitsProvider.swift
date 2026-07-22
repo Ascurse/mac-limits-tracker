@@ -8,10 +8,11 @@ public protocol LimitsProvider: Sendable {
     func fetch() async -> LimitsSnapshot
 }
 
-/// Список зарегистрированных провайдеров. M1: фиксированный порядок Claude → Codex;
-/// M3 добавляет Kimi — регистрируется только при наличии рабочих credentials
-/// (файл + непустой refresh_token), иначе скрыт (критерий приёмки bd mac-limits-tracker-6gk.3).
-/// M2 добавит фильтр/порядок из UserDefaults поверх этого списка.
+/// Список зарегистрированных провайдеров, порядок реестра по умолчанию
+/// (Claude → Codex → Kimi). Kimi регистрируется только при наличии рабочих
+/// credentials (файл + непустой refresh_token), иначе скрыт (bd mac-limits-tracker-6gk.3).
+/// Фактическую включённость и порядок отображения поверх этого списка задаёт
+/// `ProviderSettingsStore` — см. `LimitsViewModel.providerSettings`.
 public enum ProviderRegistry {
     public static func makeDefault(
         kimiCredentialsURL: URL = KimiLimitsProvider.defaultCredentialsURL
