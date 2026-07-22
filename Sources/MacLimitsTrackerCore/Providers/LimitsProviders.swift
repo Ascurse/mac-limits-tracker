@@ -198,13 +198,19 @@ public struct CodexLimitsProvider: @unchecked Sendable {
 /// источника usage/лимитов не существует (ни файла, ни CLI, ни подтверждённого API) —
 /// fetch() определяет только факт логина и, если получится, план из JWT access_token.
 public struct KimiLimitsProvider: @unchecked Sendable {
+    /// Дефолтный путь credentials-файла; вынесен в статику, чтобы `ProviderRegistry`
+    /// мог использовать то же значение по умолчанию без дублирования. Должен быть
+    /// `public` — Swift требует видимость default-параметра не ниже видимости функции,
+    /// даже в пределах модуля.
+    public static let defaultCredentialsURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent(".kimi-code/credentials/kimi-code.json")
+
     let credentialsURL: URL
     let fileReader: (URL) async throws -> Data
 
     public init(
-        credentialsURL: URL = FileManager.default
-            .homeDirectoryForCurrentUser
-            .appendingPathComponent(".kimi-code/credentials/kimi-code.json"),
+        credentialsURL: URL = KimiLimitsProvider.defaultCredentialsURL,
         fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) }
     ) {
         self.credentialsURL = credentialsURL

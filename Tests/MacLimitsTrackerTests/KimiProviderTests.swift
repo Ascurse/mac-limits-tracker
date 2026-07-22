@@ -143,3 +143,24 @@ final class KimiLimitsProviderAvailabilityTests: XCTestCase {
         XCTAssertFalse(KimiLimitsProvider.hasUsableCredentials(at: url))
     }
 }
+
+final class ProviderRegistryKimiTests: XCTestCase {
+    private func tempCredentialsURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("kimi-registry-test-\(UUID().uuidString).json")
+    }
+
+    func test_makeDefault_omitsKimiWhenCredentialsMissing() {
+        let providers = ProviderRegistry.makeDefault(kimiCredentialsURL: tempCredentialsURL())
+        XCTAssertFalse(providers.contains { $0.descriptor.id == "kimi" })
+        XCTAssertEqual(providers.map(\.descriptor.id), ["claude", "codex"])
+    }
+
+    func test_makeDefault_includesKimiWhenCredentialsUsable() throws {
+        let url = tempCredentialsURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"access_token":"a","refresh_token":"r","expires_at":1}"#.utf8).write(to: url)
+        let providers = ProviderRegistry.makeDefault(kimiCredentialsURL: url)
+        XCTAssertEqual(providers.map(\.descriptor.id), ["claude", "codex", "kimi"])
+    }
+}
