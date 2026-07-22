@@ -1,0 +1,35 @@
+name: Release
+
+# Собирает universal .app (arm64 + x86_64) и публикует GitHub Release по тегу v*.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal binary
+        # --product: иначе VerifyCli (main.swift + @main) ломает multi-arch сборку.
+        run: swift build -c release --product MacLimitsTracker --arch arm64 --arch x86_64
+
+      - name: Assemble .app bundle
+        run: |
+          BIN_SRC="$PWD/.build/apple/Products/Release/MacLimitsTracker" ./make-app.sh
+          lipo -info dist/MacLimitsTracker.app/Contents/MacOS/MacLimitsTracker
+
+      - name: Zip .app
+        # ditto сохраняет метаданные и не ломает подписанные/квarantинные атрибуты.
+        run: ditto -c -k --sequesterRsrc --keepParent dist/MacLimitsTracker.app MacLimitsTracker.zip
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" MacLimitsTracker.zip --generate-notes --title "$GITHUB_REF_NAME"

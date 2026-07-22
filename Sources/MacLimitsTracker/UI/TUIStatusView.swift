@@ -4,6 +4,7 @@ import MacLimitsTrackerCore
 /// Тема TUI: панели с рамками и датчиками в духе htop.
 struct TUIStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
+    let desktopWidgetController: DesktopWidgetController
 
     private enum Palette {
         static let bg = Color(hex: 0x101216)
@@ -20,9 +21,9 @@ struct TUIStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            panel(PopupContentBuilder.claudeSection(viewModel.claude))
+            panel(PopupContentBuilder.claudeSection(viewModel.claude), showOpenClaude: true)
             panel(PopupContentBuilder.codexSection(viewModel.codex))
-            PopupFooter(viewModel: viewModel)
+            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.normal)
         }
         .font(mono)
@@ -59,7 +60,7 @@ struct TUIStatusView: View {
 
     // Панель с рамкой; заголовок врезан в верхнюю кромку — рамку рисуем
     // SwiftUI-обводкой, не символами (символьные рамки «плывут» по ширине).
-    private func panel(_ s: ProviderSectionContent) -> some View {
+    private func panel(_ s: ProviderSectionContent, showOpenClaude: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row)
@@ -77,6 +78,16 @@ struct TUIStatusView: View {
                 Text(s.title.uppercased())
                 if case .detail(let key, let value) = s.rows.first, key == "Plan" {
                     Text("─ \(value)").foregroundStyle(Palette.dim)
+                }
+                if showOpenClaude {
+                    Button {
+                        openClaudeCode()
+                    } label: {
+                        Text("[open]")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open Claude Code to refresh the claude.ai login")
+                    .accessibilityLabel("Open Claude Code")
                 }
             }
             .padding(.horizontal, 4)

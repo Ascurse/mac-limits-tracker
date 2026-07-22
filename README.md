@@ -6,6 +6,22 @@ A macOS menu-bar app that shows the current Claude Code and Codex CLI plan / usa
 ![swift](https://img.shields.io/badge/swift-5.10%2B-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
+## Screenshots
+
+It lives as a gauge icon in the menu bar:
+
+<p align="center">
+  <img src="docs/images/menubar.png" alt="Menu-bar icon" width="380">
+</p>
+
+Clicking it opens the pop-up — both plans, live windows, and the display / auto-refresh controls:
+
+<p align="center">
+  <img src="docs/images/popup.png" alt="Pop-up showing Claude Code and Codex usage" width="340">
+</p>
+
+> The account e-mail is blurred in this screenshot only; the live pop-up shows it in full.
+
 ## What it shows
 
 Clicking the gauge icon in your menu bar opens a popup with two sections:
@@ -34,6 +50,10 @@ The popup supports four themes, switchable from the footer picker:
 
 The choice is persisted in `UserDefaults` (`appTheme`).
 
+## Desktop widget
+
+Besides the menu-bar popup there is an optional always-on-desktop panel: enable **Desktop widget** in the popup footer. It floats at desktop level on all Spaces, shows the remaining 5h / weekly quotas for both providers as progress bars, can be dragged anywhere (position persists across restarts), and refreshes together with the menu-bar data.
+
 ## Data sources
 
 | Source             | What it reads                                                   | How                                                                          |
@@ -43,6 +63,18 @@ The choice is persisted in `UserDefaults` (`appTheme`).
 | Codex auth         | `auth_mode`, `id_token` (JWT claims: plan, email, subs-until)   | `~/.codex/auth.json` — JWT body only                                         |
 
 The Claude.ai OAuth access token is read from the Keychain service `Claude Code-credentials` and sent **only** to `claude.ai` as an `Authorization: Bearer` header — it is never logged or persisted. For Codex, only the base64-decoded JWT **claims** are inspected (plan type, email, renewal date); the `access_token` is not read unless `id_token` is missing.
+
+## Install
+
+Download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The binary is universal (Apple Silicon + Intel).
+
+The app is **not signed with an Apple Developer certificate**, so on first launch Gatekeeper will block it. Either right-click the app → **Open** → **Open**, or remove the quarantine attribute:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MacLimitsTracker.app
+```
+
+Releases are built by GitHub Actions: pushing a `v*` tag (e.g. `v0.2.0`) builds the universal binary, assembles the `.app` and publishes a release with the zip attached.
 
 ## Build & run
 
@@ -76,11 +108,14 @@ Sources/
     Models/ClaudeModels.swift
     Models/CodexModels.swift
     Providers/LimitsProviders.swift
+    Formatting/LimitsFormatting.swift
     LimitsViewModel.swift
   MacLimitsTracker/             # Executable: SwiftUI app shell
     App/MacLimitsTrackerApp.swift
     App/AppDelegate.swift
     UI/StatusBarView.swift
+    UI/DesktopWidgetView.swift
+    UI/DesktopWidgetController.swift
   VerifyCli/                    # CLI for ad-hoc provider debugging
 Tests/MacLimitsTrackerTests/    # Pure-logic unit tests (JWT, stats-cache, claims)
 make-app.sh                     # One-shot release build + bundle assembler

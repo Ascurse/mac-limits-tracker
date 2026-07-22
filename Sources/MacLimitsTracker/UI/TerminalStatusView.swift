@@ -4,6 +4,7 @@ import MacLimitsTrackerCore
 /// Тема Terminal: палитра Tokyo Night, тонкие полосы прогресса.
 struct TerminalStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
+    let desktopWidgetController: DesktopWidgetController
 
     private enum Palette {
         static let bg = Color(hex: 0x1A1B26)
@@ -22,10 +23,10 @@ struct TerminalStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            section(PopupContentBuilder.claudeSection(viewModel.claude), accent: Palette.claude, name: "claude")
+            section(PopupContentBuilder.claudeSection(viewModel.claude), accent: Palette.claude, name: "claude", showOpenClaude: true)
             section(PopupContentBuilder.codexSection(viewModel.codex), accent: Palette.codex, name: "codex")
             Rectangle().fill(Palette.track).frame(height: 1)
-            PopupFooter(viewModel: viewModel)
+            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.cyan)
         }
         .font(mono)
@@ -54,7 +55,7 @@ struct TerminalStatusView: View {
         }
     }
 
-    private func section(_ s: ProviderSectionContent, accent: Color, name: String) -> some View {
+    private func section(_ s: ProviderSectionContent, accent: Color, name: String, showOpenClaude: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text("●").foregroundStyle(accent)
@@ -64,6 +65,17 @@ struct TerminalStatusView: View {
                     Text(value).foregroundStyle(Palette.dim)
                 }
                 Spacer()
+                if showOpenClaude {
+                    Button {
+                        openClaudeCode()
+                    } label: {
+                        Image(systemName: "arrow.up.forward.app")
+                            .foregroundStyle(Palette.cyan)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Open Claude Code to refresh the claude.ai login")
+                    .accessibilityLabel("Open Claude Code")
+                }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row, accent: accent)

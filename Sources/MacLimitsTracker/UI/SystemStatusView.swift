@@ -4,6 +4,7 @@ import MacLimitsTrackerCore
 /// Системная тема: текущий нативный вид попапа.
 struct SystemStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
+    let desktopWidgetController: DesktopWidgetController
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -13,7 +14,7 @@ struct SystemStatusView: View {
             Divider()
             section(PopupContentBuilder.codexSection(viewModel.codex))
             Divider()
-            PopupFooter(viewModel: viewModel)
+            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
         }
         .padding(16)
         .frame(minWidth: 320, idealWidth: 340)
@@ -46,7 +47,8 @@ struct SystemStatusView: View {
 
     private func section(_ s: ProviderSectionContent) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel(s.title, color: s.provider == .claude ? .orange : .green)
+            sectionLabel(s.title, color: s.provider == .claude ? .orange : .green,
+                         showOpenClaude: s.provider == .claude)
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row)
             }
@@ -70,13 +72,23 @@ struct SystemStatusView: View {
         }
     }
 
-    private func sectionLabel(_ title: String, color: Color) -> some View {
+    private func sectionLabel(_ title: String, color: Color, showOpenClaude: Bool) -> some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
             Spacer()
+            if showOpenClaude {
+                Button {
+                    openClaudeCode()
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help("Open Claude Code to refresh the claude.ai login")
+                .accessibilityLabel("Open Claude Code")
+            }
         }
     }
 

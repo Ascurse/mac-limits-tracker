@@ -4,6 +4,7 @@ import MacLimitsTrackerCore
 /// Тема Phosphor: монохромный зелёный CRT.
 struct PhosphorStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
+    let desktopWidgetController: DesktopWidgetController
     @State private var cursorVisible = true
 
     private enum Palette {
@@ -19,10 +20,10 @@ struct PhosphorStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            section(PopupContentBuilder.claudeSection(viewModel.claude), name: "CLAUDE CODE")
+            section(PopupContentBuilder.claudeSection(viewModel.claude), name: "CLAUDE CODE", showOpenClaude: true)
             section(PopupContentBuilder.codexSection(viewModel.codex), name: "CODEX")
             promptLine
-            PopupFooter(viewModel: viewModel)
+            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.mid)
         }
         .font(mono)
@@ -64,7 +65,7 @@ struct PhosphorStatusView: View {
         }
     }
 
-    private func section(_ s: ProviderSectionContent, name: String) -> some View {
+    private func section(_ s: ProviderSectionContent, name: String, showOpenClaude: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text("▸ \(name)").foregroundStyle(Palette.heading)
@@ -72,6 +73,16 @@ struct PhosphorStatusView: View {
                     Text("[\(value)]").foregroundStyle(Palette.mid)
                 }
                 Spacer()
+                if showOpenClaude {
+                    Button {
+                        openClaudeCode()
+                    } label: {
+                        Text("[open]").foregroundStyle(Palette.bright)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open Claude Code to refresh the claude.ai login")
+                    .accessibilityLabel("Open Claude Code")
+                }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row)

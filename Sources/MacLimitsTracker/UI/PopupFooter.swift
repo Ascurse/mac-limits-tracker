@@ -1,11 +1,13 @@
 import SwiftUI
 import MacLimitsTrackerCore
 
-/// Общий футер всех тем: режим меню-бара, автообновление, выход.
+/// Общий футер всех тем: режим меню-бара, автообновление, виджет, выход.
 struct PopupFooter: View {
     @ObservedObject var viewModel: LimitsViewModel
+    let desktopWidgetController: DesktopWidgetController
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
+    @AppStorage("showDesktopWidget") private var showDesktopWidget = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -28,6 +30,16 @@ struct PopupFooter: View {
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.mini)
+                Spacer()
+                Toggle("Desktop widget", isOn: $showDesktopWidget)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .onChange(of: showDesktopWidget) { _, newValue in
+                        desktopWidgetController.setVisible(newValue)
+                    }
+            }
+
+            HStack {
                 Spacer()
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
