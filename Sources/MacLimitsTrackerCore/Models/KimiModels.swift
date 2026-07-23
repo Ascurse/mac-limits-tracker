@@ -39,25 +39,10 @@ enum KimiJwtPayloadParser {
     ]
 
     static func planClaim(fromToken token: String) -> String? {
-        guard let payload = decodePayload(token) else { return nil }
+        guard let payload = JwtPayloadDecoder.decode(token: token) else { return nil }
         for key in planClaimKeys {
             if let value = payload[key] as? String, !value.isEmpty { return value }
         }
         return nil
-    }
-
-    private static func decodePayload(_ token: String) -> [String: Any]? {
-        let segments = token.split(separator: ".")
-        guard segments.count >= 2, let data = base64URLDecode(String(segments[1])) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    }
-
-    private static func base64URLDecode(_ value: String) -> Data? {
-        var normalized = value
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let padding = (4 - normalized.count % 4) % 4
-        normalized += String(repeating: "=", count: padding)
-        return Data(base64Encoded: normalized)
     }
 }
