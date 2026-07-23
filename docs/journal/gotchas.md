@@ -34,3 +34,10 @@
 **Причина:** порядок окон в ответе API не гарантирован.
 **Обход:** различать окна по `windowDurationMins` (300 = 5h, 10080 = weekly) через `RateLimitWindowLabel`; `SnapshotWindow.usedPercent == nil` означает «слот заявлен, данных нет», а не «слота нет».
 **Где это в коде:** [Sources/MacLimitsTrackerCore/Models/LimitsSnapshot.swift](../../Sources/MacLimitsTrackerCore/Models/LimitsSnapshot.swift), [Sources/MacLimitsTrackerCore/Providers/SnapshotMapping.swift](../../Sources/MacLimitsTrackerCore/Providers/SnapshotMapping.swift).
+
+## 2026-07-23 — Kimi resetTime с микросекундами не парсится дефолтным ISO8601DateFormatter
+
+**Симптом:** тесты зелёные (образец без дробей), но в живом рантайме у Kimi-окон `resetsAt == nil` — даты сброса молча пропадают.
+**Причина:** `GET /coding/v1/usages` отдаёт `resetTime` с микросекундами (`"2026-07-23T13:15:06.269279Z"`); `ISO8601DateFormatter()` по умолчанию дробные секунды не парсит и возвращает `nil`.
+**Обход:** парсить сначала форматтером с `.withFractionalSeconds`, затем обычным (поля без дробей тоже встречаются). См. `KimiUsagesParser.parseISO8601`.
+**Где это в коде:** [Sources/MacLimitsTrackerCore/Models/KimiModels.swift](../../Sources/MacLimitsTrackerCore/Models/KimiModels.swift).

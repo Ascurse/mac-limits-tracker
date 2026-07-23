@@ -175,7 +175,18 @@ enum KimiUsagesParser {
         return Double(limit - remaining) / Double(limit) * 100.0
     }
 
+    /// `resetTime` приходит с дробными секундами (микросекунды: "…:06.269279Z"),
+    /// которые `ISO8601DateFormatter` по умолчанию НЕ парсит (даёт nil и дата сброса
+    /// молча теряется). Сначала пробуем формат с дробями, потом обычный — на случай
+    /// полей без них (см. docs/journal/gotchas.md, bd mac-limits-tracker-6gk.8).
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso8601Plain = ISO8601DateFormatter()
+
     private static func parseISO8601(_ raw: String) -> Date? {
-        ISO8601DateFormatter().date(from: raw)
+        iso8601Fractional.date(from: raw) ?? iso8601Plain.date(from: raw)
     }
 }

@@ -79,6 +79,17 @@ final class KimiUsagesParserTests: XCTestCase {
         let parsed = try XCTUnwrap(KimiUsagesParser.parse(json))
         XCTAssertNil(parsed.usage.windows.first?.usedPercent)
     }
+
+    /// Живой API отдаёт resetTime с микросекундами ("…:06.269279Z"); дефолтный
+    /// ISO8601DateFormatter их не парсит — дата сброса не должна теряться.
+    func test_parse_fractionalSecondsResetTime_parsesDate() throws {
+        let json = sampleJSON(limitsJSON: """
+        [{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},
+          "detail":{"limit":"100","remaining":"90","resetTime":"2026-07-23T13:15:06.269279Z"}}]
+        """)
+        let parsed = try XCTUnwrap(KimiUsagesParser.parse(json))
+        XCTAssertNotNil(parsed.usage.windows.first?.resetsAt)
+    }
 }
 
 final class KimiMembershipLevelFormatterTests: XCTestCase {
