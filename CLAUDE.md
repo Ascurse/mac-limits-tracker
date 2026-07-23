@@ -79,11 +79,17 @@ Swift Package с тремя таргетами:
   `CodexLimitsProvider`/`KimiLimitsProvider` в `Providers/LimitsProviders.swift`;
   каждый строит внутренний DTO (`ClaudeStatus`/`CodexStatus`/`KimiStatus`,
   `internal`) и мапит его в публичный `LimitsSnapshot` через `toSnapshot()`
-  (`Providers/SnapshotMapping.swift`). Kimi — "тонкий" провайдер: локального
-  источника usage/лимитов нет, только логин-детект по
+  (`Providers/SnapshotMapping.swift`). Kimi: логин-детект по
   `~/.kimi-code/credentials/kimi-code.json` (логин = непустой `refresh_token`,
-  не `expires_at` — access_token живёт ~900с) и опциональный план из JWT-claim;
-  `windows` всегда `nil`, `usageError` явно сообщает о недоступности данных.
+  не `expires_at` — access_token живёт ~900с), usage — live-запрос
+  `GET https://api.kimi.com/coding/v1/usages` (`KimiUsagesParser`,
+  `KimiModels.swift`); `limits[]` → окна (`windowDurationMins` из
+  `window.duration`×multiplier по `timeUnit`), верхнеуровневый `usage` (покупной
+  пул без периода, `subType: TYPE_PURCHASE`) → деталь `"Quota"`, не окно с
+  придуманной длительностью. План = `membership.level` (Title Case через
+  `KimiMembershipLevelFormatter`), fallback — старый JWT plan-claim. 401/протухший
+  `expiresAt` → `usageError` "Kimi login expired…", `loggedIn` остаётся `true`
+  (см. bd mac-limits-tracker-6gk.8, docs/journal/decisions.md).
   Без рабочих credentials Kimi не регистрируется в `ProviderRegistry` вовсе
   (`KimiLimitsProvider.hasUsableCredentials`) — скрыт из попапа/меню-бара/виджета
   без единой правки в UI-слое. `LimitsViewModel` держит `states: [ProviderState]`
@@ -103,8 +109,7 @@ Swift Package с тремя таргетами:
 
 Добавление нового провайдера: новый тип, конформящий `LimitsProvider`, плюс
 запись в `ProviderRegistry` — без правок в `LimitsViewModel`,
-`PopupContentBuilder`, темах или виджете (см. Kimi как пример "тонкого"
-провайдера без usage-данных, bd mac-limits-tracker-6gk.3). Пошаговый гайд —
+`PopupContentBuilder`, темах или виджете. Пошаговый гайд —
 [docs/adding-a-provider.md](docs/adding-a-provider.md).
 
 ## Conventions & Patterns

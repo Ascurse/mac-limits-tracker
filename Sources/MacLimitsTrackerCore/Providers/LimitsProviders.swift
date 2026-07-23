@@ -27,7 +27,7 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
         processRunner: @escaping (String, [String]) async throws -> Data = ProcessRunner.run,
         fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
         keychainReader: @escaping () async throws -> Data = KeychainStore.readClaudeCodeCredentials,
-        httpGet: @escaping (URL, String) async throws -> Data = Http.httpGet
+        httpGet: @escaping (URL, String) async throws -> Data = { try await Http.httpGet($0, $1) }
     ) {
         self.claudeBinary = claudeBinary ?? ProcessRunner.defaultClaudeBinary()
         self.statsCacheURL = statsCacheURL
@@ -194,9 +194,9 @@ public struct CodexLimitsProvider: @unchecked Sendable {
     }
 }
 
-/// Источник данных о лимитах Kimi (Moonshot AI). "Тонкий" провайдер: локального
-/// источника usage/лимитов не существует (ни файла, ни CLI, ни подтверждённого API) —
-/// fetch() определяет только факт логина и, если получится, план из JWT access_token.
+/// Источник данных о лимитах Kimi (Moonshot AI). Логин определяется по локальному
+/// credentials-файлу (непустой `refresh_token`), usage — по live-запросу к
+/// `GET /coding/v1/usages` (см. bd mac-limits-tracker-6gk.8).
 public struct KimiLimitsProvider: @unchecked Sendable {
     /// Дефолтный путь credentials-файла; вынесен в статику, чтобы `ProviderRegistry`
     /// мог использовать то же значение по умолчанию без дублирования. Должен быть
@@ -206,15 +206,25 @@ public struct KimiLimitsProvider: @unchecked Sendable {
         .homeDirectoryForCurrentUser
         .appendingPathComponent(".kimi-code/credentials/kimi-code.json")
 
+    static let usagesURL = URL(string: "https://api.kimi.com/coding/v1/usages")!
+
     let credentialsURL: URL
     let fileReader: (URL) async throws -> Data
+    /// Выполняет GET с `Authorization: Bearer <token>`; возвращает тело ответа.
+    let httpGet: (URL, String) async throws -> Data
 
     public init(
         credentialsURL: URL = KimiLimitsProvider.defaultCredentialsURL,
-        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) }
+        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
+        // UA нейтральный: `Http.httpGet` по умолчанию шлёт `claude-code/...`, что для
+        // стороннего API Kimi некорректно и может триггерить фильтрацию по UA.
+        httpGet: @escaping (URL, String) async throws -> Data = {
+            try await Http.httpGet($0, $1, userAgent: "mac-limits-tracker/1.0")
+        }
     ) {
         self.credentialsURL = credentialsURL
         self.fileReader = fileReader
+        self.httpGet = httpGet
     }
 
     func fetchStatus() async -> KimiStatus {
@@ -223,22 +233,49 @@ public struct KimiLimitsProvider: @unchecked Sendable {
             let data = try await fileReader(credentialsURL)
             let creds = try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
             guard !creds.refreshToken.isEmpty else {
-                return KimiStatus(loggedIn: false, plan: nil, usageError: nil,
+                return KimiStatus(loggedIn: false, plan: nil, usage: nil, usageError: nil,
                                   providerError: "kimi-code refresh token missing", fetchedAt: now)
             }
-            let plan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
-            return KimiStatus(
-                loggedIn: true, plan: plan,
-                usageError: "Kimi usage data is not available",
-                providerError: nil, fetchedAt: now
-            )
+            let jwtPlan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
+            let (usage, membershipLevel, usageError) = await fetchUsage(
+                accessToken: creds.accessToken, expiresAt: creds.expiresAt)
+            let plan = membershipLevel.flatMap(KimiMembershipLevelFormatter.prettify) ?? jwtPlan
+            return KimiStatus(loggedIn: true, plan: plan, usage: usage,
+                              usageError: usageError, providerError: nil, fetchedAt: now)
         } catch {
             return KimiStatus(
-                loggedIn: false, plan: nil, usageError: nil,
+                loggedIn: false, plan: nil, usage: nil, usageError: nil,
                 providerError: "kimi-code credentials read failed: \(friendly(error))",
                 fetchedAt: now
             )
         }
+    }
+
+    /// `/coding/v1/usages` независим от факта логина: access_token живёт ~900с,
+    /// поэтому истёкший токен проверяется до сети, а 401 конвертируется в тот же
+    /// понятный текст, что и истёкший `expiresAt` (нефатально для `loggedIn`).
+    private func fetchUsage(
+        accessToken: String, expiresAt: Double?
+    ) async -> (usage: KimiUsage?, membershipLevel: String?, error: String?) {
+        let expiredMessage = "Kimi login expired — open Kimi Code to refresh"
+        if let expiresAt, expiresAt <= Date().timeIntervalSince1970 {
+            return (nil, nil, expiredMessage)
+        }
+        do {
+            let body = try await httpGet(Self.usagesURL, accessToken)
+            guard let parsed = KimiUsagesParser.parse(body) else {
+                return (nil, nil, "Kimi usage response unreadable")
+            }
+            return (parsed.usage, parsed.membershipLevel, nil)
+        } catch {
+            if isUnauthorized(error) { return (nil, nil, expiredMessage) }
+            return (nil, nil, "Kimi usage fetch failed: \(friendly(error))")
+        }
+    }
+
+    private func isUnauthorized(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return ns.domain == "Network" && ns.code == 401
     }
 }
 
@@ -469,11 +506,15 @@ public enum KeychainStore {
 
 /// Минимальный сетевой клиент: GET с Bearer-токеном.
 public enum Http {
-    public static func httpGet(_ url: URL, _ bearerToken: String) async throws -> Data {
+    /// `userAgent` по умолчанию — как у Claude Code CLI, чтобы не менять поведение
+    /// существующих вызовов; провайдеры с другим API (напр. Kimi) передают свой.
+    public static func httpGet(
+        _ url: URL, _ bearerToken: String, userAgent: String = "claude-code/2.1.207"
+    ) async throws -> Data {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("claude-code/2.1.207", forHTTPHeaderField: "User-Agent")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
         let session = URLSession(configuration: .ephemeral)
         defer { session.finishTasksAndInvalidate() }

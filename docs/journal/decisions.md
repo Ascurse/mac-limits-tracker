@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-23 — Kimi: реальный usage из `/coding/v1/usages`, план из membership вместо JWT
+
+**Контекст:** Kimi был "тонким" провайдером без usage-данных (bd mac-limits-tracker-6gk.3). Живая разведка подтвердила `GET https://api.kimi.com/coding/v1/usages`: `limits[]` с окнами по `window.duration`/`timeUnit`, верхнеуровневый `usage` (limit/used/remaining) без указания периода, `user.membership.level` вместо plan-claim в JWT (которого в реальном токене нет).
+**Решение:** `limits[]` → `SnapshotWindow[]` (длительность в минутах через multiplier по `timeUnit`: MINUTE×1/HOUR×60/DAY×1440); верхнеуровневый `usage` → `SnapshotDetail("Quota", "44 / 100 used · resets 27 Jul")`, а не окно — не хардкодим `windowDurationMins: 10080`, т.к. `subType: TYPE_PURCHASE` означает покупной пул без календарного периода. Plan = `prettify(membership.level)` (срезать `LEVEL_` префикс, Title Case) с fallback на старый JWT plan-claim (`KimiJwtPayloadParser.planClaim`, не удалён).
+**Почему:** придумывать длительность для пула без периода — вводить в заблуждение (ложный "Weekly"-ярлык); UI различает "нет слота" (nil) и "слот без данных" уже для других провайдеров, деталь передаёт ту же информацию честно. `membership.level` — единственный live-источник плана, JWT claim в текущих токенах отсутствует, но оставлен как fallback на случай других сценариев авторизации.
+**Последствия:** `KimiStatus.usage: KimiUsage?` (windows + quota), `KimiUsagesParser`/`KimiUsagesResponseJSON`/`KimiMembershipLevelFormatter` в `KimiModels.swift`. `Http.httpGet` получил параметр `userAgent` (дефолт сохраняет прежнее поведение Claude) — Kimi шлёт нейтральный `mac-limits-tracker/1.0` вместо `claude-code/...`. 401/протухший `expiresAt` → `usageError` "Kimi login expired…", `loggedIn` остаётся `true` (есть refresh_token).
+
 ## 2026-07-23 — Общий JwtPayloadDecoder: 2 сегмента вместо строгих 3
 
 **Контекст:** декод base64url payload JWT дублировался в `KimiJwtPayloadParser` (≥2 сегмента, токен без подписи тоже валиден) и `ChatGPTClaims.payload` (строго 3 сегмента).
