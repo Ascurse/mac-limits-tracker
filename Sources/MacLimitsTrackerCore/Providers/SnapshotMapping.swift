@@ -139,17 +139,19 @@ extension CodexStatus {
 }
 
 extension KimiStatus {
-    /// Kimi — "тонкий" провайдер: локального источника usage/лимитов нет, поэтому
-    /// windows/credits/renewal всегда пусты; usageError объясняет это пользователю
-    /// (не "Loading…" — данные не появятся, см. bd mac-limits-tracker-6gk.3).
+    /// `limits[]` → окна (по `windowDurationMins`, как у Claude/Codex); верхнеуровневый
+    /// `usage` — покупной пул без периода (`subType: TYPE_PURCHASE`), поэтому идёт деталью
+    /// "Quota", а не окном с придуманной длительностью (см. docs/journal/decisions.md).
     func toSnapshot() -> LimitsSnapshot {
-        LimitsSnapshot(
+        let windows = usage?.windows.isEmpty == false ? usage?.windows.map(Self.toSnapshotWindow) : nil
+        let details = usage?.quota.flatMap(Self.quotaDetail).map { [$0] } ?? []
+        return LimitsSnapshot(
             loggedIn: loggedIn,
             plan: plan,
-            windows: nil,
+            windows: windows,
             creditsBalance: nil,
             rateLimitReachedType: nil,
-            details: [],
+            details: details,
             daysUntilRenewal: nil,
             renewalDate: nil,
             usageError: usageError,
@@ -157,4 +159,25 @@ extension KimiStatus {
             fetchedAt: fetchedAt
         )
     }
+
+    private static func toSnapshotWindow(_ window: KimiUsageWindow) -> SnapshotWindow {
+        SnapshotWindow(windowDurationMins: window.windowDurationMins,
+                       usedPercent: window.usedPercent, resetsAt: window.resetsAt)
+    }
+
+    private static func quotaDetail(_ quota: KimiQuotaDetail) -> SnapshotDetail? {
+        guard let limit = quota.limit, let used = quota.used else { return nil }
+        var value = "\(used) / \(limit) used"
+        if let resetsAt = quota.resetsAt {
+            value += " · resets \(Self.quotaResetFormatter.string(from: resetsAt))"
+        }
+        return SnapshotDetail(key: "Quota", value: value)
+    }
+
+    private static let quotaResetFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }()
 }

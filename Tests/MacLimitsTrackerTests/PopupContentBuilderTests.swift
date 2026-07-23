@@ -315,28 +315,28 @@ final class PopupContentBuilderKimiTests: XCTestCase {
     }
 
     func test_loggedInWithPlan_showsPlanAndUsageUnavailableError() {
-        let status = KimiStatus(loggedIn: true, plan: "kimi-pro",
-                                usageError: "Kimi usage data is not available",
+        let status = KimiStatus(loggedIn: true, plan: "kimi-pro", usage: nil,
+                                usageError: "Kimi login expired — open Kimi Code to refresh",
                                 providerError: nil, fetchedAt: Self.sentinel)
         let s = section(status)
         XCTAssertEqual(s.descriptor.id, "kimi")
         XCTAssertEqual(s.title, "Kimi")
         XCTAssertEqual(s.rows, [
             .detail(key: "Plan", value: "kimi-pro"),
-            .error("Kimi usage data is not available")
+            .error("Kimi login expired — open Kimi Code to refresh")
         ])
     }
 
     func test_loggedInWithoutPlan_showsDashPlan() {
-        let status = KimiStatus(loggedIn: true, plan: nil,
-                                usageError: "Kimi usage data is not available",
+        let status = KimiStatus(loggedIn: true, plan: nil, usage: nil,
+                                usageError: "Kimi login expired — open Kimi Code to refresh",
                                 providerError: nil, fetchedAt: Self.sentinel)
         let s = section(status)
         XCTAssertEqual(s.rows.first, .detail(key: "Plan", value: "—"))
     }
 
     func test_notLoggedIn_showsSingleErrorRow() {
-        let status = KimiStatus(loggedIn: false, plan: nil, usageError: nil,
+        let status = KimiStatus(loggedIn: false, plan: nil, usage: nil, usageError: nil,
                                 providerError: "kimi-code refresh token missing",
                                 fetchedAt: Self.sentinel)
         let s = section(status)
