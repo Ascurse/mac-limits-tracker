@@ -104,7 +104,8 @@ Swift Package с тремя таргетами:
 Добавление нового провайдера: новый тип, конформящий `LimitsProvider`, плюс
 запись в `ProviderRegistry` — без правок в `LimitsViewModel`,
 `PopupContentBuilder`, темах или виджете (см. Kimi как пример "тонкого"
-провайдера без usage-данных, bd mac-limits-tracker-6gk.3).
+провайдера без usage-данных, bd mac-limits-tracker-6gk.3). Пошаговый гайд —
+[docs/adding-a-provider.md](docs/adding-a-provider.md).
 
 ## Conventions & Patterns
 
