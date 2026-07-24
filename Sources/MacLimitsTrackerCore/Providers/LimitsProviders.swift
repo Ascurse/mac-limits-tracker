@@ -212,10 +212,13 @@ public struct KimiLimitsProvider: @unchecked Sendable {
     let fileReader: (URL) async throws -> Data
     /// Выполняет GET с `Authorization: Bearer <token>`; возвращает тело ответа.
     let httpGet: (URL, String) async throws -> Data
+    /// Обновляет access_token через auth.kimi.com и атомарно переписывает credentials-файл.
+    let refresh: (KimiCredentialsFile) async throws -> KimiCredentialsFile
 
-    public init(
+    init(
         credentialsURL: URL = KimiLimitsProvider.defaultCredentialsURL,
         fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
+        refresh: ((KimiCredentialsFile) async throws -> KimiCredentialsFile)? = nil,
         // UA нейтральный: `Http.httpGet` по умолчанию шлёт `claude-code/...`, что для
         // стороннего API Kimi некорректно и может триггерить фильтрацию по UA.
         httpGet: @escaping (URL, String) async throws -> Data = {
@@ -224,6 +227,9 @@ public struct KimiLimitsProvider: @unchecked Sendable {
     ) {
         self.credentialsURL = credentialsURL
         self.fileReader = fileReader
+        self.refresh = refresh ?? { old in
+            try await KimiTokenRefresher().refreshedCredentials(old: old, credentialsURL: credentialsURL)
+        }
         self.httpGet = httpGet
     }
 
@@ -237,9 +243,32 @@ public struct KimiLimitsProvider: @unchecked Sendable {
                                   providerError: "kimi-code refresh token missing", fetchedAt: now)
             }
             let jwtPlan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
-            let (usage, membershipLevel, usageError) = await fetchUsage(
-                accessToken: creds.accessToken, expiresAt: creds.expiresAt)
-            let plan = membershipLevel.flatMap(KimiMembershipLevelFormatter.prettify) ?? jwtPlan
+            let expiredMessage = "Kimi login expired — open Kimi Code to refresh"
+            let activeCreds: KimiCredentialsFile
+            if let expiresAt = creds.expiresAt, expiresAt <= now.timeIntervalSince1970 {
+                do {
+                    activeCreds = try await refresh(creds)
+                } catch let refreshError as KimiTokenRefreshError {
+                    switch refreshError {
+                    case .loginExpired:
+                        return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
+                                          usageError: expiredMessage, providerError: nil, fetchedAt: now)
+                    case .refreshFailed(let msg):
+                        return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
+                                          usageError: "Kimi token refresh failed: \(msg)",
+                                          providerError: nil, fetchedAt: now)
+                    }
+                } catch {
+                    return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
+                                      usageError: "Kimi token refresh failed: \(friendly(error))",
+                                      providerError: nil, fetchedAt: now)
+                }
+            } else {
+                activeCreds = creds
+            }
+            let refreshedJwtPlan = KimiJwtPayloadParser.planClaim(fromToken: activeCreds.accessToken)
+            let (usage, membershipLevel, usageError) = await fetchUsage(creds: activeCreds)
+            let plan = membershipLevel.flatMap(KimiMembershipLevelFormatter.prettify) ?? refreshedJwtPlan
             return KimiStatus(loggedIn: true, plan: plan, usage: usage,
                               usageError: usageError, providerError: nil, fetchedAt: now)
         } catch {
@@ -251,25 +280,39 @@ public struct KimiLimitsProvider: @unchecked Sendable {
         }
     }
 
-    /// `/coding/v1/usages` независим от факта логина: access_token живёт ~900с,
-    /// поэтому истёкший токен проверяется до сети, а 401 конвертируется в тот же
-    /// понятный текст, что и истёкший `expiresAt` (нефатально для `loggedIn`).
+    /// Делает запрос `/coding/v1/usages` и, если сервер отвечает 401, один раз пытается
+    /// обновить токен и повторить запрос. Результат маппится в понятный `usageError`.
     private func fetchUsage(
-        accessToken: String, expiresAt: Double?
+        creds: KimiCredentialsFile
     ) async -> (usage: KimiUsage?, membershipLevel: String?, error: String?) {
         let expiredMessage = "Kimi login expired — open Kimi Code to refresh"
-        if let expiresAt, expiresAt <= Date().timeIntervalSince1970 {
-            return (nil, nil, expiredMessage)
-        }
         do {
-            let body = try await httpGet(Self.usagesURL, accessToken)
+            let body = try await httpGet(Self.usagesURL, creds.accessToken)
             guard let parsed = KimiUsagesParser.parse(body) else {
                 return (nil, nil, "Kimi usage response unreadable")
             }
             return (parsed.usage, parsed.membershipLevel, nil)
         } catch {
-            if isUnauthorized(error) { return (nil, nil, expiredMessage) }
-            return (nil, nil, "Kimi usage fetch failed: \(friendly(error))")
+            guard isUnauthorized(error) else {
+                return (nil, nil, "Kimi usage fetch failed: \(friendly(error))")
+            }
+            do {
+                let newCreds = try await refresh(creds)
+                let body = try await httpGet(Self.usagesURL, newCreds.accessToken)
+                guard let parsed = KimiUsagesParser.parse(body) else {
+                    return (nil, nil, "Kimi usage response unreadable")
+                }
+                return (parsed.usage, parsed.membershipLevel, nil)
+            } catch let refreshError as KimiTokenRefreshError {
+                switch refreshError {
+                case .loginExpired:
+                    return (nil, nil, expiredMessage)
+                case .refreshFailed(let msg):
+                    return (nil, nil, "Kimi token refresh failed: \(msg)")
+                }
+            } catch {
+                return (nil, nil, "Kimi token refresh failed: \(friendly(error))")
+            }
         }
     }
 
@@ -527,6 +570,37 @@ public enum Http {
             )
         }
         return data
+    }
+
+    /// POST application/x-www-form-urlencoded. В отличие от httpGet, НЕ бросает на
+    /// non-2xx: refresh-эндпоинт Kimi кодирует причину отказа в теле (error=invalid_grant),
+    /// поэтому (status, body) возвращаются вызывающему для классификации. Бросает только
+    /// транспортные ошибки.
+    public static func httpPostForm(
+        _ url: URL,
+        headers: [String: String],
+        form: [(String, String)]
+    ) async throws -> (statusCode: Int, body: Data) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+        let bodyString = form.map { key, value in
+            let k = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
+            let v = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+            return "\(k)=\(v)"
+        }.joined(separator: "&")
+        request.httpBody = Data(bodyString.utf8)
+
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        return (statusCode, data)
     }
 }
 

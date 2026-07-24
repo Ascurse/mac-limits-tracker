@@ -56,10 +56,10 @@ final class KimiCredentialsFileTests: XCTestCase {
 final class KimiLimitsProviderTests: XCTestCase {
     private struct StubError: Error {}
 
-    private func credentialsJSON(accessToken: String, refreshToken: String) -> Data {
+    private func credentialsJSON(accessToken: String, refreshToken: String, expiresAt: Double = 1) -> Data {
         Data("""
         {"access_token":"\(accessToken)","refresh_token":"\(refreshToken)",
-         "expires_at":1,"token_type":"Bearer","scope":"read"}
+         "expires_at":\(expiresAt),"token_type":"Bearer","scope":"read"}
         """.utf8)
     }
 
@@ -69,7 +69,8 @@ final class KimiLimitsProviderTests: XCTestCase {
         let token = makeJwt(payload: ["plan": "kimi-pro"])
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
-            fileReader: { _ in self.credentialsJSON(accessToken: token, refreshToken: "refresh-1") }
+            fileReader: { _ in self.credentialsJSON(accessToken: token, refreshToken: "refresh-1") },
+            refresh: { _ in throw KimiTokenRefreshError.loginExpired }
         )
         let snapshot = await provider.fetch()
         XCTAssertTrue(snapshot.loggedIn)
@@ -80,10 +81,11 @@ final class KimiLimitsProviderTests: XCTestCase {
     }
 
     func test_fetch_loggedInWithoutPlanClaim_planIsNilNoError() async {
-        let token = makeJwt(payload: ["sub": "user-1"])
+        let futureExpiry = Date().addingTimeInterval(900).timeIntervalSince1970
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
-            fileReader: { _ in self.credentialsJSON(accessToken: token, refreshToken: "refresh-1") }
+            fileReader: { _ in self.credentialsJSON(accessToken: "acc-tok", refreshToken: "ref-tok", expiresAt: futureExpiry) },
+            httpGet: { _, _ in Data("{}".utf8) }
         )
         let snapshot = await provider.fetch()
         XCTAssertTrue(snapshot.loggedIn)
@@ -163,6 +165,7 @@ final class KimiLimitsProviderUsageTests: XCTestCase {
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
             fileReader: { _ in self.credentialsJSON(expiresAt: futureExpiry) },
+            refresh: { _ in throw KimiTokenRefreshError.loginExpired },
             httpGet: { _, _ in
                 throw NSError(domain: "Network", code: 401,
                              userInfo: [NSLocalizedDescriptionKey: "HTTP 401"])
@@ -192,6 +195,7 @@ final class KimiLimitsProviderUsageTests: XCTestCase {
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
             fileReader: { _ in self.credentialsJSON(expiresAt: 1) },
+            refresh: { _ in throw KimiTokenRefreshError.loginExpired },
             httpGet: { _, _ in
                 httpGetCalled = true
                 return self.sampleUsagesJSON
@@ -200,6 +204,108 @@ final class KimiLimitsProviderUsageTests: XCTestCase {
         let snapshot = await provider.fetch()
         XCTAssertFalse(httpGetCalled)
         XCTAssertEqual(snapshot.usageError, "Kimi login expired — open Kimi Code to refresh")
+        XCTAssertTrue(snapshot.loggedIn)
+    }
+
+    func test_fetch_expiredToken_refreshSucceeds_usageFetchedWithNewToken() async {
+        let past = 1.0
+        let future = Date().addingTimeInterval(900).timeIntervalSince1970
+        var receivedTokens: [String] = []
+        let provider = KimiLimitsProvider(
+            credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in self.credentialsJSON(expiresAt: past) },
+            refresh: { old in
+                XCTAssertEqual(old.accessToken, "acc-tok")
+                return KimiCredentialsFile(accessToken: "new-acc", refreshToken: "new-ref", expiresAt: future, tokenType: nil, scope: nil)
+            },
+            httpGet: { _, token in
+                receivedTokens.append(token)
+                return self.sampleUsagesJSON
+            }
+        )
+        let snapshot = await provider.fetch()
+        XCTAssertEqual(receivedTokens, ["new-acc"])
+        XCTAssertTrue(snapshot.loggedIn)
+        XCTAssertEqual(snapshot.plan, "Intermediate")
+        XCTAssertNil(snapshot.usageError)
+    }
+
+    func test_fetch_expiredToken_refreshLoginExpired_usageErrorLoginExpired() async {
+        let provider = KimiLimitsProvider(
+            credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in self.credentialsJSON(expiresAt: 1) },
+            refresh: { _ in throw KimiTokenRefreshError.loginExpired },
+            httpGet: { _, _ in
+                XCTFail("httpGet should not be called")
+                return Data()
+            }
+        )
+        let snapshot = await provider.fetch()
+        XCTAssertTrue(snapshot.loggedIn)
+        XCTAssertEqual(snapshot.usageError, "Kimi login expired — open Kimi Code to refresh")
+    }
+
+    func test_fetch_usages401_refreshSucceeds_retriesWithNewToken() async {
+        let future = Date().addingTimeInterval(900).timeIntervalSince1970
+        var calls = 0
+        var receivedTokens: [String] = []
+        let provider = KimiLimitsProvider(
+            credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in self.credentialsJSON(expiresAt: future) },
+            refresh: { old in
+                XCTAssertEqual(old.accessToken, "acc-tok")
+                return KimiCredentialsFile(accessToken: "new-acc", refreshToken: "new-ref", expiresAt: future, tokenType: nil, scope: nil)
+            },
+            httpGet: { _, token in
+                calls += 1
+                receivedTokens.append(token)
+                if calls == 1 {
+                    throw NSError(domain: "Network", code: 401,
+                                  userInfo: [NSLocalizedDescriptionKey: "HTTP 401"])
+                }
+                return self.sampleUsagesJSON
+            }
+        )
+        let snapshot = await provider.fetch()
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(receivedTokens, ["acc-tok", "new-acc"])
+        XCTAssertTrue(snapshot.loggedIn)
+        XCTAssertNotNil(snapshot.windows)
+        XCTAssertNil(snapshot.usageError)
+    }
+
+    func test_fetch_expiredToken_refreshFailedRetryable_usageErrorMentionsRefreshFailure() async {
+        let provider = KimiLimitsProvider(
+            credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in self.credentialsJSON(expiresAt: 1) },
+            refresh: { _ in throw KimiTokenRefreshError.refreshFailed("HTTP 503") },
+            httpGet: { _, _ in
+                XCTFail("httpGet should not be called")
+                return Data()
+            }
+        )
+        let snapshot = await provider.fetch()
+        XCTAssertTrue(snapshot.loggedIn)
+        XCTAssertTrue(snapshot.usageError?.hasPrefix("Kimi token refresh failed:") == true)
+        XCTAssertFalse(snapshot.usageError?.contains("login expired") == true)
+        XCTAssertNil(snapshot.windows)
+    }
+
+    func test_fetch_freshToken_refreshNeverCalled() async {
+        let future = Date().addingTimeInterval(900).timeIntervalSince1970
+        let provider = KimiLimitsProvider(
+            credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
+            fileReader: { _ in self.credentialsJSON(expiresAt: future) },
+            refresh: { _ in
+                XCTFail("refresh should not be called")
+                return KimiCredentialsFile(accessToken: "never", refreshToken: "never", expiresAt: future, tokenType: nil, scope: nil)
+            },
+            httpGet: { _, _ in self.sampleUsagesJSON }
+        )
+        let snapshot = await provider.fetch()
+        XCTAssertTrue(snapshot.loggedIn)
+        XCTAssertNotNil(snapshot.windows)
+        XCTAssertNil(snapshot.usageError)
     }
 }
 

@@ -19,6 +19,27 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-25 — Kimi: авто-refresh access_token (bd mac-limits-tracker-8kz)
+
+**Контекст:** access_token Kimi живёт ~15 минут, CLI не обновляет его в фоне, и вне свежего окна попап показывал «Kimi login expired».
+**Решение:** отдельный `KimiTokenRefresher` (DI-клоужуры, как у провайдера): pre-race перечитывание файла до refresh и повторное после `invalid_grant` (гонка ротации с CLI по образцу PR MoonshotAI/kimi-cli#1996, без lockfile); fail-fast без retry — приложение перезапросит на следующем тике; атомарная запись через temp-файл с `posixPermissions` 0600 до `replaceItemAt` + merge поверх сырого JSON-словаря (сохраняет неизвестные поля CLI); в `KimiLimitsProvider` новый DI-параметр `refresh`; 401 от usages при локально свежем токене → один refresh + один retry; `Http.httpPostForm` возвращает `(statusCode, body)` вместо throw на non-2xx, т.к. `invalid_grant` кодируется в теле.
+**Почему:** reverse-engineered endpoint (`POST https://auth.kimi.com/api/oauth/token`) и паттерн PR #1996 проще и надёжнее, чем внедрение lockfile CLI; merge словаря сохраняет обратную совместимость с форматом, который контролирует сторонний CLI.
+**Последствия:** init `KimiLimitsProvider` стал `internal` (параметр ссылается на internal `KimiCredentialsFile`); существующий тест `test_fetch_expiresAtInPast_httpGetNeverCalled` переведён на refresh-стаб; новые файлы `Providers/KimiTokenRefresher.swift` и тесты `KimiTokenRefresherTests` (8 шт.).
+
+## 2026-07-24 — Динамическая регистрация провайдеров через DynamicProviderSpec (gh #27)
+
+**Контекст:** состав реестра фиксировался в `ProviderRegistry.makeDefault()` при старте: залогинился в Kimi Code после запуска приложения — провайдер появлялся только после перезапуска.
+**Решение:** `LimitsViewModel` принимает `dynamicProviders: [DynamicProviderSpec]` (`id` + `isAvailable` + `makeProvider`, замыкания инжектируются — в тестах стабы) и сверяет доступность синхронно в начале `refresh()` (`reconcileDynamicProviders`): добавляет/убирает провайдера по id, перечитывает настройки через `settingsStore.settings(for:)`, но **не сохраняет** их. Приложение передаёт `[.kimi]`; статический `makeDefault()` оставлен как есть — спек дедуплицирует по id, двойной регистрации нет.
+**Почему:** reconcile до порождения fetch-Task + отмена предыдущего Task в `refresh()` даёт ту же защиту от гонки, что и `applyProviderSettingsChange` — устаревшая задача не запишет states после смены состава. Без save persisted-запись (порядок, выключенность) переживает цикл «пропал → появился».
+**Последствия:** VerifyCli и тесты конструируют VM без spec (дефолт `[]`) — статический путь не изменился; watcher на файловую систему не заводили, перепроверка раз в refresh достаточна.
+
+## 2026-07-24 — «Launch at login»: система — источник истины, без своей персистентности (gh #33)
+
+**Контекст:** запуск при входе предлагался только ручной настройкой в System Settings → Login Items.
+**Решение:** `LaunchAtLoginManager` (app-таргет) над `SMAppService.mainApp`: тоггл читает `status` (.requiresApproval считается включённым), перечитывает его при каждом открытии попапа, register/unregister без своего флага в UserDefaults; без бандла — no-op по паттерну `NotificationManager` (`Bundle.main.bundleIdentifier != nil`).
+**Почему:** пользователь может менять login item в System Settings параллельно — свой persisted-флаг неизбежно рассинхронизировался бы; `SMAppService` уже персистит состояние в системе.
+**Последствия:** юнит-тестов нет (системная граница, Tests-таргет видит только Core) — верификация сборкой и живым тогглом в бандле.
+
 ## 2026-07-24 — AppSettingsStore: единая точка настроек приложения
 
 **Контекст:** интервал автообновления был зашит в `LimitsViewModel` (`TimeInterval = 300`), пороги severity — в `PopupContent` (15/40), настройки уведомлений отсутствовали; часть настроек жила в `@AppStorage` (view-уровень), часть — в `ProviderSettingsStore` (gh #24/#25/#29).

@@ -21,6 +21,20 @@
 
 ---
 
+## 2026-07-25 — Data.write atomic не задаёт права для credentials
+
+**Симптом:** credentials-файл записывается без нужных 0600-прав, несмотря на `.atomic`, или приходится вызывать `FileManager.createFile`, а `replaceItemAt` возвращает `nil` и хочется assert-ить.
+**Причина:** `Data.write(to:options:.atomic)` делает swap атомарно, но права нового файла наследуются от temp-файла с umask по умолчанию; сама API не позволяет указать `posixPermissions`.
+**Обход:** для credentials создавать temp-файл через `FileManager.createFile(attributes: [.posixPermissions: 0o600])`, затем `FileManager.replaceItemAt(..., withItemAt: temp)` — его `nil`-возврат при успехе норма, не assert-ить.
+**Где это в коде:** [Sources/MacLimitsTrackerCore/Providers/KimiTokenRefresher.swift](../../Sources/MacLimitsTrackerCore/Providers/KimiTokenRefresher.swift).
+
+## 2026-07-24 — VerifyCli молча виснет после пересборки: keychain-prompt на GUI
+
+**Симптом:** свежесобранный VerifyCli (release) не печатает ничего и не завершается; при kill часть вывода «теряется» ещё и из-за block-буферизации stdout в пайпе.
+**Причина:** ad-hoc-подпись меняется при каждой пересборке → keychain ACL записи `Claude Code-credentials` не узнаёт бинарь, и `SecItemCopyMatching` блокируется в ожидании GUI-диалога разрешения (видно в `sample <pid>`: стек в `CSSM_DecryptDataFinal` → `mach_msg` к securityd). Первый провайдер в цикле — Claude, поэтому не печатается даже его заголовок.
+**Обход:** разрешить диалог («Always Allow») — или учитывать при диагностике «зависаний» CLI, что это не код, а keychain-prompt на экране пользователя.
+**Где это в коде:** [Sources/VerifyCli/main.swift](../../Sources/VerifyCli/main.swift), чтение keychain — `ClaudeKeychainCredentialsParser` в [Sources/MacLimitsTrackerCore/Models/ClaudeModels.swift](../../Sources/MacLimitsTrackerCore/Models/ClaudeModels.swift).
+
 ## 2026-07-24 — repeatForever-анимация в onAppear замирает в окне MenuBarExtra
 
 **Симптом:** мигающий элемент попапа (CRT-курсор в теме Phosphor) периодически замирает после циклов открытия/закрытия окна.
