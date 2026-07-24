@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-24 — gh release create падает, если релиз с таким тегом уже существует
+
+**Симптом:** Release-workflow падает на шаге публикации с «a release with the same tag name already exists», хотя сборка и zip прошли успешно.
+**Причина:** `gh release create` неидемпотентен; релиз мог быть создан вручную (UI/`gh`) до пуша тега — тогда одноимённый релиз уже есть, и create завершается с exit 1.
+**Обход:** шаг публикации create-or-upload: `gh release view "$GITHUB_REF_NAME"` — релиз есть → `gh release upload --clobber`, нет → `gh release create`.
+**Где это в коде:** [.github/workflows/release.yml](../../.github/workflows/release.yml).
+
 ## 2026-07-23 — VerifyCli: ложный abort «pointer being freed was not allocated» в debug-сборке
 
 **Симптом:** `swift run VerifyCli` (debug) падает с abort про освобождение невыделенного указателя при выходе из процесса, хотя вся полезная работа уже выполнена.
