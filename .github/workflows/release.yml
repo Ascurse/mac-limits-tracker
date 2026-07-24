@@ -22,7 +22,7 @@ jobs:
 
       - name: Assemble .app bundle
         run: |
-          BIN_SRC="$PWD/.build/apple/Products/Release/MacLimitsTracker" ./make-app.sh
+          APP_VERSION="${GITHUB_REF_NAME#v}" BIN_SRC="$PWD/.build/apple/Products/Release/MacLimitsTracker" ./make-app.sh
           lipo -info dist/MacLimitsTracker.app/Contents/MacOS/MacLimitsTracker
 
       - name: Zip .app
@@ -32,4 +32,11 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" MacLimitsTracker.zip --generate-notes --title "$GITHUB_REF_NAME"
+        # Релиз мог быть создан вручную до пуша тега — тогда не падаем
+        # на duplicate, а просто докладываем ассет в существующий релиз.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" MacLimitsTracker.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" MacLimitsTracker.zip --generate-notes --title "$GITHUB_REF_NAME"
+          fi
