@@ -310,7 +310,9 @@ final class LimitsViewModelDynamicProvidersTests: XCTestCase {
         await waitUntil { !vm.isRefreshing }
 
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"])
-        XCTAssertEqual(vm.providerSettings.map(\.id), ["claude"])
+        // Запись kimi в настройках СОХРАНЯЕТСЯ при отсутствии провайдера
+        // (union с id спек) — иначе чужой save затирал бы её persisted-копию.
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["claude", "kimi"])
     }
 
     /// При появлении динамического провайдера снапшоты остальных не сбрасываются
@@ -369,5 +371,36 @@ final class LimitsViewModelDynamicProvidersTests: XCTestCase {
         XCTAssertEqual(kimi?.isEnabled, false, "выключенность kimi должна пережить цикл пропал/появился")
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"],
                        "выключенный пользователем провайдер не возвращается в states сам")
+    }
+
+    /// Регрессия (ревью B1): пока провайдер отсутствует, изменение настроек
+    /// ДРУГОГО провайдера не должно стирать его persisted-запись — save
+    /// пишет порядок/выключенность целиком, и без union-записи kimi при
+    /// возвращении появлялся бы в конце включённым.
+    func test_dynamicProvider_settingsChangeWhileAbsent_preservesPersistedEntry() async {
+        let flag = AvailabilityFlag(true)
+        let vm = makeVM(flag: flag, providers: [StubProvider(id: "claude"), StubProvider(id: "codex")])
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        vm.setProviderEnabled(false, id: "kimi")
+        vm.moveProviderUp(id: "kimi")
+        vm.moveProviderUp(id: "kimi")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "claude", "codex"])
+
+        flag.value = false
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        vm.setProviderEnabled(false, id: "codex")
+
+        flag.value = true
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        let kimi = vm.providerSettings.first { $0.id == "kimi" }
+        XCTAssertEqual(kimi?.isEnabled, false, "выключенность kimi должна пережить чужой save, пока его не было")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "claude", "codex"],
+                       "позиция kimi должна пережить чужой save, пока его не было")
     }
 }

@@ -5,7 +5,9 @@ import SwiftUI
 @MainActor
 public final class LimitsViewModel: ObservableObject {
     @Published public private(set) var states: [ProviderState]
-    /// Настройки всех зарегистрированных провайдеров (включая выключенные) — для UI настроек.
+    /// Настройки провайдеров реестра (включая выключенные) и id dynamic-спек —
+    /// даже отсутствующих, чтобы `save` не затирал их persisted-запись (gh #27).
+    /// UI настроек читает отфильтрованную проекцию `providerSettingsWithDescriptors`.
     @Published public private(set) var providerSettings: [ProviderSetting]
     @Published public var isRefreshing = false
     @Published public var autoRefresh = true
@@ -33,13 +35,25 @@ public final class LimitsViewModel: ObservableObject {
         self.dynamicProviders = dynamicProviders
         self.settingsStore = settingsStore
         self.appSettingsStore = appSettingsStore
-        let settings = settingsStore.settings(for: providers.map { $0.descriptor.id })
+        let settings = settingsStore.settings(for: Self.settingsIds(providers: providers, specs: dynamicProviders))
         self.providerSettings = settings
         self.states = Self.enabledProviders(providers, settings: settings)
             .map { ProviderState(descriptor: $0.descriptor, snapshot: nil) }
         self.autoRefreshInterval = appSettingsStore.refreshInterval
         self.severityThresholds = appSettingsStore.severityThresholds
         self.notificationsEnabled = appSettingsStore.notificationsEnabled
+    }
+
+    /// Id, по которым ведутся настройки: реестр + id dynamic-спек, включая
+    /// отсутствующие — `save` пишет порядок/выключенность целиком, и без
+    /// записи отсутствующего провайдера его persisted-настройки стирались бы
+    /// до возвращения (gh #27, ревью B1).
+    private static func settingsIds(
+        providers: [any LimitsProvider], specs: [DynamicProviderSpec]
+    ) -> [String] {
+        var ids = providers.map { $0.descriptor.id }
+        for spec in specs where !ids.contains(spec.id) { ids.append(spec.id) }
+        return ids
     }
 
     /// Включённые провайдеры в порядке настроек — то, что реально опрашивается и отображается.
@@ -100,7 +114,7 @@ public final class LimitsViewModel: ObservableObject {
             }
         }
         guard changed else { return }
-        providerSettings = settingsStore.settings(for: allProviders.map { $0.descriptor.id })
+        providerSettings = settingsStore.settings(for: Self.settingsIds(providers: allProviders, specs: dynamicProviders))
         let existingById = Dictionary(uniqueKeysWithValues: states.map { ($0.descriptor.id, $0) })
         states = Self.enabledProviders(allProviders, settings: providerSettings).map { provider in
             existingById[provider.descriptor.id]
