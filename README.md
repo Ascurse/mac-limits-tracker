@@ -98,7 +98,7 @@ open dist/MacLimitsTracker.app
 `make-app.sh` runs `swift build -c release` and assembles `dist/MacLimitsTracker.app` with an `Info.plist` (`LSUIElement=true`, bundle id `dev.ascurse.MacLimitsTracker`).
 
 ### Run on boot
-Add `dist/MacLimitsTracker.app` to **System Settings → General → Login Items → Open at login**.
+Toggle **Launch at login** in the popup footer (uses `SMAppService`, macOS 13+). Alternatively, add `dist/MacLimitsTracker.app` to **System Settings → General → Login Items → Open at login** manually.
 
 ## Project layout
 

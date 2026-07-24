@@ -8,6 +8,7 @@ struct PopupFooter: View {
     @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
     @AppStorage("showDesktopWidget") private var showDesktopWidget = false
+    @StateObject private var launchAtLogin = LaunchAtLoginManager()
 
     /// Опции порогов severity (issue #25), % остатка лимита.
     private static let warningOptions: [Double] = [20, 30, 40, 50, 60]
@@ -95,6 +96,13 @@ struct PopupFooter: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 Spacer()
+                Toggle("Launch at login", isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .disabled(!launchAtLogin.isAvailable)
             }
 
             HStack {
@@ -107,6 +115,8 @@ struct PopupFooter: View {
                 .keyboardShortcut("q", modifiers: .command)
             }
         }
+        // Система — источник истины по login item: перечитываем при каждом открытии попапа.
+        .onAppear { launchAtLogin.syncStatus() }
     }
 
     /// Список провайдеров реестра (включая выключенных): чекбокс включения +
