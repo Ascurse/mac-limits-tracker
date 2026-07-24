@@ -56,6 +56,24 @@ struct KimiCredentialsFile: Decodable {
     }
 }
 
+/// Ответ `POST /api/oauth/token` (refresh_token grant) auth.kimi.com.
+/// refresh_token ротируется при каждом refresh — обязателен в ответе.
+struct KimiOAuthTokenResponse: Decodable {
+    let accessToken: String
+    let refreshToken: String
+    let expiresIn: Int
+    let tokenType: String?
+    let scope: String?
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case expiresIn = "expires_in"
+        case tokenType = "token_type"
+        case scope
+    }
+}
+
 /// Читает payload JWT (без проверки подписи — нужны только claims для чтения).
 /// Ищет claim, похожий на план/тариф, по списку известных имён; если payload
 /// не парсится или знакомого claim нет — nil без ошибки (см. bd mac-limits-tracker-6gk.3).
