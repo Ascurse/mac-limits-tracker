@@ -11,7 +11,9 @@ struct MacLimitsTrackerApp: App {
     private let notificationManager: NotificationManager
 
     init() {
-        let viewModel = LimitsViewModel()
+        // Kimi — через dynamicProviders (gh #27): появление/удаление credentials
+        // подхватывается на refresh, без перезапуска приложения.
+        let viewModel = LimitsViewModel(dynamicProviders: [.kimi])
         _viewModel = StateObject(wrappedValue: viewModel)
         desktopWidgetController = DesktopWidgetController(viewModel: viewModel)
         notificationManager = NotificationManager(viewModel: viewModel)

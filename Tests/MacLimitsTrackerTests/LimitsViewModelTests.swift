@@ -235,3 +235,139 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         }
     }
 }
+
+/// Изменяемый флаг доступности для `DynamicProviderSpec.isAvailable` (@Sendable-замыкание).
+private final class AvailabilityFlag: @unchecked Sendable {
+    var value: Bool
+    init(_ value: Bool) { self.value = value }
+}
+
+/// gh #27: динамическая регистрация провайдера по внешнему условию доступности
+/// (у Kimi — появление/удаление файла credentials) без перезапуска приложения.
+@MainActor
+final class LimitsViewModelDynamicProvidersTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suiteName = "LimitsViewModelDynamicProvidersTests"
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suiteName)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        super.tearDown()
+    }
+
+    private func kimiSpec(_ flag: AvailabilityFlag) -> DynamicProviderSpec {
+        DynamicProviderSpec(
+            id: "kimi",
+            isAvailable: { flag.value },
+            makeProvider: { StubProvider(id: "kimi") }
+        )
+    }
+
+    private func makeVM(flag: AvailabilityFlag, providers: [any LimitsProvider]? = nil) -> LimitsViewModel {
+        LimitsViewModel(
+            providers: providers ?? [StubProvider(id: "claude")],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            dynamicProviders: [kimiSpec(flag)]
+        )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2, _ condition: () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    func test_dynamicProvider_appearsAfterRefresh_whenCredentialsAppear() async {
+        let flag = AvailabilityFlag(false)
+        let vm = makeVM(flag: flag)
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"])
+
+        flag.value = true
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "kimi"])
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["claude", "kimi"])
+    }
+
+    func test_dynamicProvider_disappearsAfterRefresh_whenCredentialsRemoved() async {
+        let flag = AvailabilityFlag(true)
+        let vm = makeVM(flag: flag)
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "kimi"])
+
+        flag.value = false
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"])
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["claude"])
+    }
+
+    /// При появлении динамического провайдера снапшоты остальных не сбрасываются
+    /// в nil (тот же контракт, что у applyProviderSettingsChange).
+    func test_dynamicProvider_reconcile_preservesExistingSnapshots() async {
+        let gate = FetchGate(isOpen: true)
+        let flag = AvailabilityFlag(false)
+        let vm = makeVM(flag: flag, providers: [GatedProvider(id: "claude", gate: gate)])
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertNotNil(vm.states.first?.snapshot)
+
+        // claude подвисает на gate, kimi появляется — до завершения fetch у claude
+        // должен остаться прежний снапшот, у kimi — nil.
+        await gate.close()
+        flag.value = true
+        vm.refresh()
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "kimi"])
+        XCTAssertNotNil(vm.states[0].snapshot, "снапшот claude не должен сбрасываться при reconcile")
+        XCTAssertNil(vm.states[1].snapshot, "новый провайдер ждёт ближайшего завершённого fetch")
+
+        await gate.open()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "kimi"])
+    }
+
+    /// Спек не должен дублировать провайдера, уже присутствующего в статическом
+    /// списке (приложение получает Kimi и от makeDefault, и от spec).
+    func test_dynamicProvider_doesNotDuplicate_staticallyPresentProvider() async {
+        let flag = AvailabilityFlag(true)
+        let vm = makeVM(flag: flag, providers: [StubProvider(id: "claude"), StubProvider(id: "kimi")])
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "kimi"])
+    }
+
+    /// Reconcile не сохраняет настройки: выключенность/позиция, выставленные
+    /// пользователем, переживают цикл «пропал → появился».
+    func test_dynamicProvider_reappear_keepsUserDisabledSetting() async {
+        let flag = AvailabilityFlag(true)
+        let vm = makeVM(flag: flag)
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        vm.setProviderEnabled(false, id: "kimi")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"])
+
+        flag.value = false
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        flag.value = true
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        let kimi = vm.providerSettings.first { $0.id == "kimi" }
+        XCTAssertEqual(kimi?.isEnabled, false, "выключенность kimi должна пережить цикл пропал/появился")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"],
+                       "выключенный пользователем провайдер не возвращается в states сам")
+    }
+}
