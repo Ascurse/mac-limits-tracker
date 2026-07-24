@@ -5,7 +5,6 @@ import MacLimitsTrackerCore
 struct PhosphorStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let desktopWidgetController: DesktopWidgetController
-    @State private var cursorVisible = true
 
     private enum Palette {
         static let bg = Color(hex: 0x050805)
@@ -21,7 +20,7 @@ struct PhosphorStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             ForEach(viewModel.states) { state in
-                section(PopupContentBuilder.section(state))
+                section(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
             }
             promptLine
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
@@ -51,17 +50,19 @@ struct PhosphorStatusView: View {
         }
     }
 
-    // Мигающий курсор — единственная анимация темы.
+    // Мигающий курсор — единственная анимация темы. phaseAnimator, а не
+    // repeatForever в onAppear: looping-анимация привязана к жизненному циклу
+    // вью и корректно перезапускается после переоткрытия окна MenuBarExtra —
+    // repeatForever в onAppear при этом рассинхронизировался и курсор замирал.
     private var promptLine: some View {
         HStack(spacing: 2) {
             Text("$").foregroundStyle(Palette.mid)
             Text("▮")
                 .foregroundStyle(Palette.bright)
-                .opacity(cursorVisible ? 1 : 0)
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                        cursorVisible = false
-                    }
+                .phaseAnimator([false, true]) { content, phase in
+                    content.opacity(phase ? 1 : 0)
+                } animation: { _ in
+                    .easeInOut(duration: 0.6)
                 }
         }
     }

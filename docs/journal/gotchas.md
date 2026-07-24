@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-24 — repeatForever-анимация в onAppear замирает в окне MenuBarExtra
+
+**Симптом:** мигающий элемент попапа (CRT-курсор в теме Phosphor) периодически замирает после циклов открытия/закрытия окна.
+**Причина:** `withAnimation(.repeatForever)` в `onAppear` рассинхронизируется с жизненным циклом вью внутри `MenuBarExtra(.window)`: окно при закрытии гасит анимацию, но при переоткрытии `onAppear` может не перевызваться — `@State` остаётся в конечном положении без работающей анимации. Воспроизведение тайминг-зависимое, синтетическими AX-кликами не ловится.
+**Обход:** для looping-анимаций — `phaseAnimator` (macOS 14+): перезапуск управляется SwiftUI по появлению вью, `@State` не нужен.
+**Где это в коде:** [Sources/MacLimitsTracker/UI/PhosphorStatusView.swift](../../Sources/MacLimitsTracker/UI/PhosphorStatusView.swift).
+
 ## 2026-07-24 — gh release create падает, если релиз с таким тегом уже существует
 
 **Симптом:** Release-workflow падает на шаге публикации с «a release with the same tag name already exists», хотя сборка и zip прошли успешно.

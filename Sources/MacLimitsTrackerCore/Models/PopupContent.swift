@@ -10,14 +10,17 @@ public enum PopupRow: Equatable {
 }
 
 /// Серьёзность остатка лимита: пороги по ОСТАТКУ (не по использованному).
-public enum Severity: Equatable {
+public enum Severity: Equatable, Sendable {
     case normal
     case warning
     case critical
 
-    public static func from(remainingPercent: Double) -> Severity {
-        if remainingPercent <= 15 { return .critical }
-        if remainingPercent <= 40 { return .warning }
+    public static func from(
+        remainingPercent: Double,
+        thresholds: SeverityThresholds = .standard
+    ) -> Severity {
+        if remainingPercent <= thresholds.criticalRemaining { return .critical }
+        if remainingPercent <= thresholds.warningRemaining { return .warning }
         return .normal
     }
 }
@@ -64,18 +67,26 @@ public enum PopupContentBuilder {
     /// Единая сборка секции попапа для любого провайдера — надмножество прежних
     /// `claudeSection`/`codexSection`: у Claude просто нет details/credits/renewal
     /// (мапперы оставляют эти поля snapshot'а пустыми).
-    public static func section(_ state: ProviderState, now: Date = Date()) -> ProviderSectionContent {
+    public static func section(
+        _ state: ProviderState,
+        now: Date = Date(),
+        thresholds: SeverityThresholds = .standard
+    ) -> ProviderSectionContent {
         ProviderSectionContent(descriptor: state.descriptor,
                                title: state.descriptor.displayName,
-                               rows: rows(for: state.snapshot, now: now))
+                               rows: rows(for: state.snapshot, now: now, thresholds: thresholds))
     }
 
-    private static func rows(for snapshot: LimitsSnapshot?, now: Date) -> [PopupRow] {
+    private static func rows(
+        for snapshot: LimitsSnapshot?,
+        now: Date,
+        thresholds: SeverityThresholds
+    ) -> [PopupRow] {
         guard let snap = snapshot else { return [.note("Loading…")] }
         if let e = snap.providerError { return [.error(e)] }
 
         var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
-        rows.append(contentsOf: usageRows(snap, now: now))
+        rows.append(contentsOf: usageRows(snap, now: now, thresholds: thresholds))
         rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
         rows.append(contentsOf: renewalRows(snap, now: now))
         return rows
@@ -83,12 +94,16 @@ public enum PopupContentBuilder {
 
     /// Окна + кредиты + ошибка rate-limit; либо usageError, либо «Loading usage…»,
     /// если usage ещё не загружен.
-    private static func usageRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {
+    private static func usageRows(
+        _ snap: LimitsSnapshot,
+        now: Date,
+        thresholds: SeverityThresholds
+    ) -> [PopupRow] {
         guard let windows = snap.windows else {
             if let ue = snap.usageError { return [.error(ue)] }
             return [.note("Loading usage…")]
         }
-        var rows = windowRows(windows, now: now)
+        var rows = windowRows(windows, now: now, thresholds: thresholds)
         if let bal = snap.creditsBalance, !bal.isEmpty {
             rows.append(.detail(key: "Credits", value: bal))
         }
@@ -100,13 +115,18 @@ public enum PopupContentBuilder {
 
     /// Окна снапшота в уже заданном мапперами порядке; `usedPercent == nil` — слот
     /// заявлен, данных нет («… usage unavailable», раньше было только у Claude).
-    private static func windowRows(_ windows: [SnapshotWindow], now: Date) -> [PopupRow] {
+    private static func windowRows(
+        _ windows: [SnapshotWindow],
+        now: Date,
+        thresholds: SeverityThresholds
+    ) -> [PopupRow] {
         windows.map { w in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
             return windowRow(short: labels.short, long: labels.long,
                              remaining: w.usedPercent.map { max(0, 100 - $0) },
                              resetsAt: w.resetsAt, now: now,
-                             unavailable: "\(labels.long) usage unavailable")
+                             unavailable: "\(labels.long) usage unavailable",
+                             thresholds: thresholds)
         }
     }
 
@@ -128,7 +148,8 @@ public enum PopupContentBuilder {
     }
 
     private static func windowRow(short: String, long: String, remaining: Double?,
-                                  resetsAt: Date?, now: Date, unavailable: String = "unavailable") -> PopupRow {
+                                  resetsAt: Date?, now: Date, unavailable: String = "unavailable",
+                                  thresholds: SeverityThresholds = .standard) -> PopupRow {
         guard let p = remaining else { return .note(unavailable) }
         return .window(WindowContent(
             shortLabel: short,
@@ -136,7 +157,7 @@ public enum PopupContentBuilder {
             remainingPercent: p,
             remainingText: String(format: "%.0f%%", p),
             resetText: resetsAt.map { relativeFormatter.localizedString(for: $0, relativeTo: now) },
-            severity: .from(remainingPercent: p)
+            severity: .from(remainingPercent: p, thresholds: thresholds)
         ))
     }
 }

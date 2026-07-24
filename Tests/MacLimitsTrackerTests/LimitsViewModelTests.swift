@@ -2,7 +2,7 @@ import XCTest
 @testable import MacLimitsTrackerCore
 
 /// Провайдер-заглушка: снапшот и descriptor заданы в конструкторе, fetch() не выполняет I/O.
-private struct StubProvider: LimitsProvider {
+struct StubProvider: LimitsProvider {
     let descriptor: ProviderDescriptor
     let snapshot: LimitsSnapshot
 

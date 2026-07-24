@@ -11,7 +11,7 @@ struct SystemStatusView: View {
             header
             ForEach(viewModel.states) { state in
                 Divider()
-                section(PopupContentBuilder.section(state))
+                section(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
             }
             Divider()
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)

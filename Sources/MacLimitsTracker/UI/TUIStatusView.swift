@@ -22,7 +22,7 @@ struct TUIStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             ForEach(viewModel.states) { state in
-                panel(PopupContentBuilder.section(state))
+                panel(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
             }
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.normal)

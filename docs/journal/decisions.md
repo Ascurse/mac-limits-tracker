@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-24 — AppSettingsStore: единая точка настроек приложения
+
+**Контекст:** интервал автообновления был зашит в `LimitsViewModel` (`TimeInterval = 300`), пороги severity — в `PopupContent` (15/40), настройки уведомлений отсутствовали; часть настроек жила в `@AppStorage` (view-уровень), часть — в `ProviderSettingsStore` (gh #24/#25/#29).
+**Решение:** завели `AppSettingsStore` (Core, инжектируемый UserDefaults, ключи `autoRefreshInterval` / `severityThresholds.*` / `notificationsEnabled` в `.standard` рядом с @AppStorage-ключами). `LimitsViewModel` публикует `@Published`-проекции + сеттеры-персистеры; чистые функции (`PopupContentBuilder.section`, `Severity.from`, `NotificationEvaluator`) получают пороги параметром с дефолтом `.standard` — UserDefaults внутрь чистой логики не протягиваем.
+**Почему:** повторяет проверенный паттерн `ProviderSettingsStore`; `NotificationManager` и ViewModel читают одни настройки, не владея друг другом; persisted-значения тестируются изолированно через `UserDefaults(suiteName:)`.
+**Последствия:** `autoRefreshInterval` — enum `RefreshInterval`, а не `TimeInterval`; пороги severity настраиваемые (`SeverityThresholds`, инвариант critical < warning прижимается в init); уведомления вычисляет чистый `NotificationEvaluator` (dedup crossing по ухудшению зоны, re-arm после восстановления, ресет окна — по смене `resetsAt`, первое наблюдение окна за порогом = crossing из normal), доставка — `NotificationManager` в app-таргете (no-op без бандла, т.е. под `swift run`).
+
 ## 2026-07-23 — Kimi: реальный usage из `/coding/v1/usages`, план из membership вместо JWT
 
 **Контекст:** Kimi был "тонким" провайдером без usage-данных (bd mac-limits-tracker-6gk.3). Живая разведка подтвердила `GET https://api.kimi.com/coding/v1/usages`: `limits[]` с окнами по `window.duration`/`timeUnit`, верхнеуровневый `usage` (limit/used/remaining) без указания периода, `user.membership.level` вместо plan-claim в JWT (которого в реальном токене нет).

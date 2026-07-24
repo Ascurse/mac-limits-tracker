@@ -9,24 +9,34 @@ public final class LimitsViewModel: ObservableObject {
     @Published public private(set) var providerSettings: [ProviderSetting]
     @Published public var isRefreshing = false
     @Published public var autoRefresh = true
+    /// Интервал автообновления — персистится в AppSettingsStore (issue #24).
+    @Published public private(set) var autoRefreshInterval: RefreshInterval
+    /// Пороги severity — персистятся в AppSettingsStore (issue #25).
+    @Published public private(set) var severityThresholds: SeverityThresholds
+    /// Уведомления о порогах и ресетах окон — персистятся в AppSettingsStore (issue #29).
+    @Published public private(set) var notificationsEnabled: Bool
 
     private let allProviders: [any LimitsProvider]
     private let settingsStore: ProviderSettingsStore
+    private let appSettingsStore: AppSettingsStore
     private var refreshTask: Task<Void, Never>?
     private var timer: Timer?
 
     public init(
         providers: [any LimitsProvider] = ProviderRegistry.makeDefault(),
         settingsStore: ProviderSettingsStore = ProviderSettingsStore(),
-        autoRefreshInterval: TimeInterval = 300
+        appSettingsStore: AppSettingsStore = AppSettingsStore()
     ) {
         self.allProviders = providers
         self.settingsStore = settingsStore
+        self.appSettingsStore = appSettingsStore
         let settings = settingsStore.settings(for: providers.map { $0.descriptor.id })
         self.providerSettings = settings
         self.states = Self.enabledProviders(providers, settings: settings)
             .map { ProviderState(descriptor: $0.descriptor, snapshot: nil) }
-        self.autoRefreshInterval = autoRefreshInterval
+        self.autoRefreshInterval = appSettingsStore.refreshInterval
+        self.severityThresholds = appSettingsStore.severityThresholds
+        self.notificationsEnabled = appSettingsStore.notificationsEnabled
     }
 
     /// Включённые провайдеры в порядке настроек — то, что реально опрашивается и отображается.
@@ -41,8 +51,6 @@ public final class LimitsViewModel: ObservableObject {
         timer?.invalidate()
         refreshTask?.cancel()
     }
-
-    let autoRefreshInterval: TimeInterval
 
     public func start(_ initial: Bool = true) {
         if initial { refresh() }
@@ -83,7 +91,7 @@ public final class LimitsViewModel: ObservableObject {
     func startTimer() {
         timer?.invalidate()
         guard autoRefresh else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: autoRefreshInterval, repeats: true) {
+        timer = Timer.scheduledTimer(withTimeInterval: autoRefreshInterval.timeInterval, repeats: true) {
             [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
         }
@@ -101,6 +109,24 @@ public final class LimitsViewModel: ObservableObject {
     public func setAutoRefresh(_ value: Bool) {
         autoRefresh = value
         if value { startTimer() } else { timer?.invalidate(); timer = nil }
+    }
+
+    /// Меняет интервал автообновления: персистит и перезапускает таймер,
+    /// если автообновление включено (startTimer сам инвалидирует старый).
+    public func setAutoRefreshInterval(_ interval: RefreshInterval) {
+        autoRefreshInterval = interval
+        appSettingsStore.refreshInterval = interval
+        if autoRefresh { startTimer() }
+    }
+
+    public func setSeverityThresholds(_ thresholds: SeverityThresholds) {
+        severityThresholds = thresholds
+        appSettingsStore.severityThresholds = thresholds
+    }
+
+    public func setNotificationsEnabled(_ enabled: Bool) {
+        notificationsEnabled = enabled
+        appSettingsStore.notificationsEnabled = enabled
     }
 
     /// Включает/выключает провайдера в настройках; выключенный сразу пропадает

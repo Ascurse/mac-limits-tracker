@@ -22,7 +22,7 @@ struct TerminalStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             ForEach(viewModel.states) { state in
-                section(PopupContentBuilder.section(state))
+                section(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
             }
             Rectangle().fill(Palette.track).frame(height: 1)
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)

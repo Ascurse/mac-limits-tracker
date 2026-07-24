@@ -8,11 +8,13 @@ struct MacLimitsTrackerApp: App {
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
     @AppStorage("showDesktopWidget") private var showDesktopWidget = false
     private let desktopWidgetController: DesktopWidgetController
+    private let notificationManager: NotificationManager
 
     init() {
         let viewModel = LimitsViewModel()
         _viewModel = StateObject(wrappedValue: viewModel)
         desktopWidgetController = DesktopWidgetController(viewModel: viewModel)
+        notificationManager = NotificationManager(viewModel: viewModel)
     }
 
     var body: some Scene {

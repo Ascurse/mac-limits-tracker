@@ -9,6 +9,10 @@ struct PopupFooter: View {
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
     @AppStorage("showDesktopWidget") private var showDesktopWidget = false
 
+    /// Опции порогов severity (issue #25), % остатка лимита.
+    private static let warningOptions: [Double] = [20, 30, 40, 50, 60]
+    private static let criticalOptions: [Double] = [5, 10, 15, 20, 25]
+
     var body: some View {
         VStack(spacing: 8) {
             Picker("Theme", selection: $theme) {
@@ -23,10 +27,52 @@ struct PopupFooter: View {
             .pickerStyle(.menu)
             .controlSize(.mini)
 
+            Picker("Refresh every", selection: Binding(
+                get: { viewModel.autoRefreshInterval },
+                set: { viewModel.setAutoRefreshInterval($0) }
+            )) {
+                ForEach(RefreshInterval.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .controlSize(.mini)
+
+            HStack {
+                Picker("Warning at", selection: Binding(
+                    get: { viewModel.severityThresholds.warningRemaining },
+                    set: { warning in
+                        // critical не должен догонять warning: прижимаем к ближайшей
+                        // допустимой опции ниже нового warning.
+                        let maxCritical = Self.criticalOptions.filter { $0 < warning }.max() ?? warning - 1
+                        let critical = min(viewModel.severityThresholds.criticalRemaining, maxCritical)
+                        viewModel.setSeverityThresholds(SeverityThresholds(
+                            warningRemaining: warning, criticalRemaining: critical))
+                    }
+                )) {
+                    ForEach(Self.warningOptions, id: \.self) { Text("\(Int($0))% left").tag($0) }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.mini)
+
+                Picker("Critical at", selection: Binding(
+                    get: { viewModel.severityThresholds.criticalRemaining },
+                    set: { critical in
+                        viewModel.setSeverityThresholds(SeverityThresholds(
+                            warningRemaining: viewModel.severityThresholds.warningRemaining,
+                            criticalRemaining: critical))
+                    }
+                )) {
+                    ForEach(Self.criticalOptions.filter {
+                        $0 < viewModel.severityThresholds.warningRemaining
+                    }, id: \.self) { Text("\(Int($0))% left").tag($0) }
+                }
+                .pickerStyle(.menu)
+                .controlSize(.mini)
+            }
+
             providerSettingsSection
 
             HStack {
-                Toggle("Auto-refresh (5 min)", isOn: Binding(
+                Toggle("Auto-refresh (\(viewModel.autoRefreshInterval.title))", isOn: Binding(
                     get: { viewModel.autoRefresh },
                     set: { viewModel.setAutoRefresh($0) }
                 ))
@@ -39,6 +85,16 @@ struct PopupFooter: View {
                     .onChange(of: showDesktopWidget) { _, newValue in
                         desktopWidgetController.setVisible(newValue)
                     }
+            }
+
+            HStack {
+                Toggle("Notifications", isOn: Binding(
+                    get: { viewModel.notificationsEnabled },
+                    set: { viewModel.setNotificationsEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                Spacer()
             }
 
             HStack {
