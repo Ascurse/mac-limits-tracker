@@ -72,19 +72,40 @@ extension ClaudeStatus {
         } else {
             windows = nil
         }
+        // Дневная статистика из stats-cache (gh #26): счётчики уже распарсены в
+        // `today`, здесь только форматируем detail-строку.
+        var details: [SnapshotDetail] = []
+        if let today {
+            details.append(SnapshotDetail(
+                key: "Today",
+                value: "\(today.messageCount) msgs · \(today.sessionCount) sessions · \(Self.abbreviated(today.tokens)) tokens"
+            ))
+        }
         return LimitsSnapshot(
             loggedIn: loggedIn,
             plan: subscriptionType,
             windows: windows,
             creditsBalance: nil,
             rateLimitReachedType: nil,
-            details: [],
+            details: details,
             daysUntilRenewal: nil,
             renewalDate: nil,
             usageError: usageError,
             providerError: providerError,
             fetchedAt: fetchedAt
         )
+    }
+
+    /// Компактная запись числа токенов: 999 / 12.3K / 1.3M, без локали
+    /// (детерминированно для тестов), `.0` срезается.
+    private static func abbreviated(_ value: Int) -> String {
+        func trim(_ scaled: Double, _ suffix: String) -> String {
+            let s = String(format: "%.1f", scaled)
+            return (s.hasSuffix(".0") ? String(s.dropLast(2)) : s) + suffix
+        }
+        if value >= 1_000_000 { return trim(Double(value) / 1_000_000, "M") }
+        if value >= 1_000 { return trim(Double(value) / 1_000, "K") }
+        return "\(value)"
     }
 }
 
