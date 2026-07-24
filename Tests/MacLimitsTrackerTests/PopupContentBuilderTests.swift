@@ -10,6 +10,34 @@ final class SeverityTests: XCTestCase {
         XCTAssertEqual(Severity.from(remainingPercent: 15), .critical)  // граница входит в critical
         XCTAssertEqual(Severity.from(remainingPercent: 0), .critical)
     }
+
+    /// Кастомные пороги (issue #25): то же значение остатка может давать
+    /// другую серьёзность, чем при стандартных 40/15.
+    func test_customThresholds_shiftSeverityBands() {
+        let lax = SeverityThresholds(warningRemaining: 20, criticalRemaining: 5)
+        XCTAssertEqual(Severity.from(remainingPercent: 25, thresholds: lax), .normal)
+        XCTAssertEqual(Severity.from(remainingPercent: 25), .warning)
+        XCTAssertEqual(Severity.from(remainingPercent: 10, thresholds: lax), .warning)
+        XCTAssertEqual(Severity.from(remainingPercent: 10), .critical)
+
+        let strict = SeverityThresholds(warningRemaining: 60, criticalRemaining: 30)
+        XCTAssertEqual(Severity.from(remainingPercent: 50, thresholds: strict), .warning)
+        XCTAssertEqual(Severity.from(remainingPercent: 25, thresholds: strict), .critical)
+    }
+}
+
+final class SeverityThresholdsTests: XCTestCase {
+    /// Инвариант: critical строго ниже warning, иначе зона warning недостижима.
+    func test_init_clampsCriticalBelowWarning() {
+        let t = SeverityThresholds(warningRemaining: 20, criticalRemaining: 25)
+        XCTAssertEqual(t.warningRemaining, 20)
+        XCTAssertLessThan(t.criticalRemaining, t.warningRemaining)
+    }
+
+    func test_standard_matchesHardcodedDefaults() {
+        XCTAssertEqual(SeverityThresholds.standard.warningRemaining, 40)
+        XCTAssertEqual(SeverityThresholds.standard.criticalRemaining, 15)
+    }
 }
 
 private let claudeDescriptor = ProviderDescriptor(
@@ -21,6 +49,37 @@ private let codexDescriptor = ProviderDescriptor(
     id: "codex", displayName: "Codex", shortName: "Codex",
     menuBarSymbol: "X", accentColorHex: 0x9ECE6A, loginHelp: nil
 )
+
+/// Проброс кастомных порогов через PopupContentBuilder.section (issue #25).
+final class PopupContentBuilderThresholdsTests: XCTestCase {
+    private func state(remaining: Double) -> ProviderState {
+        let snap = LimitsSnapshot(
+            loggedIn: true, plan: nil,
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 100 - remaining, resetsAt: nil)],
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: nil, fetchedAt: Date()
+        )
+        return ProviderState(descriptor: claudeDescriptor, snapshot: snap)
+    }
+
+    private func windowSeverity(_ s: ProviderSectionContent) -> Severity? {
+        for row in s.rows { if case .window(let w) = row { return w.severity } }
+        return nil
+    }
+
+    func test_customThresholds_changeWindowSeverity() {
+        let lax = SeverityThresholds(warningRemaining: 20, criticalRemaining: 5)
+        let s = PopupContentBuilder.section(state(remaining: 25), thresholds: lax)
+        XCTAssertEqual(windowSeverity(s), .normal)
+    }
+
+    /// Вызов без thresholds — поведение как раньше (стандартные 40/15).
+    func test_defaultArgument_keepsStandardSeverity() {
+        let s = PopupContentBuilder.section(state(remaining: 25))
+        XCTAssertEqual(windowSeverity(s), .warning)
+    }
+}
 
 final class PopupContentBuilderClaudeTests: XCTestCase {
     private func makeStatus(

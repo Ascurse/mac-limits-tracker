@@ -21,7 +21,7 @@ struct PhosphorStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             ForEach(viewModel.states) { state in
-                section(PopupContentBuilder.section(state))
+                section(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
             }
             promptLine
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
