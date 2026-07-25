@@ -144,6 +144,10 @@ swift test
 swift run -c release VerifyCli
 ```
 
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to report bugs, propose features, and submit pull requests. Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). Found a security issue? Please report it privately via [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
