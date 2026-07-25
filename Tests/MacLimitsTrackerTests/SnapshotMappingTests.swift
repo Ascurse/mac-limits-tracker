@@ -7,13 +7,14 @@ final class ClaudeStatusSnapshotMappingTests: XCTestCase {
     private func makeStatus(
         subscriptionType: String? = "max",
         usage: ClaudeUsage? = nil,
+        today: ClaudeStatus.DayUsage? = nil,
         usageError: String? = nil,
         providerError: String? = nil
     ) -> ClaudeStatus {
         ClaudeStatus(
             loggedIn: true, authMethod: nil, apiProvider: nil, email: nil,
             subscriptionType: subscriptionType, orgName: nil,
-            today: nil, latestDay: nil, lastComputedDate: nil,
+            today: today, latestDay: nil, lastComputedDate: nil,
             totalSessions: nil, totalMessages: nil,
             usage: usage, usageError: usageError,
             fetchedAt: Self.sentinel, providerError: providerError
@@ -54,6 +55,26 @@ final class ClaudeStatusSnapshotMappingTests: XCTestCase {
 
     func test_detailsAlwaysEmpty() {
         XCTAssertEqual(makeStatus().toSnapshot().details, [])
+    }
+
+    func test_todayPresent_appendsTodayDetail() {
+        let today = ClaudeStatus.DayUsage(date: "2026-07-24", messageCount: 42,
+                                          sessionCount: 3, toolCallCount: 7, tokens: 12_300)
+        let snap = makeStatus(today: today).toSnapshot()
+        XCTAssertEqual(snap.details, [
+            SnapshotDetail(key: "Today", value: "42 msgs · 3 sessions · 12.3K tokens")
+        ])
+    }
+
+    func test_todayTokenAbbreviation_boundaries() {
+        func detail(_ tokens: Int) -> String? {
+            let today = ClaudeStatus.DayUsage(date: "2026-07-24", messageCount: 1,
+                                              sessionCount: 1, toolCallCount: 1, tokens: tokens)
+            return makeStatus(today: today).toSnapshot().details.first?.value
+        }
+        XCTAssertEqual(detail(999), "1 msgs · 1 sessions · 999 tokens")
+        XCTAssertEqual(detail(1_000), "1 msgs · 1 sessions · 1K tokens")
+        XCTAssertEqual(detail(1_270_000), "1 msgs · 1 sessions · 1.3M tokens")
     }
 
     func test_creditsAndRateLimitAlwaysNil() {
