@@ -24,6 +24,10 @@ public final class LimitsViewModel: ObservableObject {
     private let appSettingsStore: AppSettingsStore
     private var refreshTask: Task<Void, Never>?
     private var timer: Timer?
+    /// Последний успешный снапшот по id провайдера. Переживает disable/enable и
+    /// исчезновение/появление dynamic-провайдера, чтобы stale-отображение не
+    /// сбрасывалось при смене состава реестра.
+    private var lastGoodSnapshots: [String: LimitsSnapshot] = [:]
 
     public init(
         providers: [any LimitsProvider] = ProviderRegistry.makeDefault(),
@@ -84,8 +88,13 @@ public final class LimitsViewModel: ObservableObject {
             if Task.isCancelled { return }
             await MainActor.run {
                 guard let self else { return }
+                let existingById = Dictionary(uniqueKeysWithValues: self.states.map { ($0.descriptor.id, $0) })
                 self.states = zip(providers, snapshots).map { provider, snapshot in
-                    ProviderState(descriptor: provider.descriptor, snapshot: snapshot)
+                    let existing = existingById[provider.descriptor.id]
+                    let previousGood = existing?.lastGoodSnapshot ?? self.lastGoodSnapshots[provider.descriptor.id]
+                    let lastGood = SnapshotResolver.isGood(snapshot) ? snapshot : previousGood
+                    if let lastGood { self.lastGoodSnapshots[provider.descriptor.id] = lastGood }
+                    return ProviderState(descriptor: provider.descriptor, snapshot: snapshot, lastGoodSnapshot: lastGood)
                 }
                 self.isRefreshing = false
             }
@@ -118,7 +127,8 @@ public final class LimitsViewModel: ObservableObject {
         let existingById = Dictionary(uniqueKeysWithValues: states.map { ($0.descriptor.id, $0) })
         states = Self.enabledProviders(allProviders, settings: providerSettings).map { provider in
             existingById[provider.descriptor.id]
-                ?? ProviderState(descriptor: provider.descriptor, snapshot: nil)
+                ?? ProviderState(descriptor: provider.descriptor, snapshot: nil,
+                                 lastGoodSnapshot: lastGoodSnapshots[provider.descriptor.id])
         }
     }
 
@@ -212,7 +222,8 @@ public final class LimitsViewModel: ObservableObject {
         let enabled = Self.enabledProviders(allProviders, settings: providerSettings)
         states = enabled.map { provider in
             existingById[provider.descriptor.id]
-                ?? ProviderState(descriptor: provider.descriptor, snapshot: nil)
+                ?? ProviderState(descriptor: provider.descriptor, snapshot: nil,
+                                 lastGoodSnapshot: lastGoodSnapshots[provider.descriptor.id])
         }
         if isRefreshing || states.contains(where: { $0.snapshot == nil }) { refresh() }
     }
@@ -224,9 +235,10 @@ extension LimitsViewModel {
     public var statusTooltip: String {
         var parts: [String] = []
         for state in states {
-            parts.append(state.snapshot?.menuTitle(shortName: state.descriptor.shortName)
+            let resolved = SnapshotResolver.resolve(state)
+            parts.append(resolved.snapshot?.menuTitle(shortName: state.descriptor.shortName)
                           ?? state.descriptor.shortName)
-            for w in state.snapshot?.windows ?? [] {
+            for w in resolved.snapshot?.windows ?? [] {
                 guard let used = w.usedPercent else { continue }
                 let label = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins).long.lowercased()
                 parts.append("\(label) \(Self.tooltipRemaining(used))%")

@@ -404,3 +404,200 @@ final class LimitsViewModelDynamicProvidersTests: XCTestCase {
                        "позиция kimi должна пережить чужой save, пока его не было")
     }
 }
+
+// MARK: - lastGoodSnapshot
+
+/// Провайдер-заглушка, чей снапшот можно менять между вызовами `refresh()`.
+private actor MutableStubProvider: LimitsProvider {
+    let descriptor: ProviderDescriptor
+    var snapshot: LimitsSnapshot
+
+    init(id: String, snapshot: LimitsSnapshot) {
+        descriptor = ProviderDescriptor(id: id, displayName: id, shortName: id,
+                                        menuBarSymbol: String(id.prefix(1)).uppercased(),
+                                        accentColorHex: 0, loginHelp: nil)
+        self.snapshot = snapshot
+    }
+
+    func fetch() async -> LimitsSnapshot { snapshot }
+
+    func setSnapshot(_ snapshot: LimitsSnapshot) { self.snapshot = snapshot }
+}
+
+@MainActor
+final class LimitsViewModelTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suiteName = "LimitsViewModelLastGoodSnapshotTests"
+    private let fixedDate = Date(timeIntervalSince1970: 3_000_000)
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suiteName)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        super.tearDown()
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2, _ condition: () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    private func goodSnapshot(plan: String, windows: [SnapshotWindow]) -> LimitsSnapshot {
+        LimitsSnapshot(
+            loggedIn: true, plan: plan, windows: windows, creditsBalance: nil,
+            rateLimitReachedType: nil, details: [], daysUntilRenewal: nil,
+            renewalDate: nil, usageError: nil, providerError: nil, fetchedAt: fixedDate
+        )
+    }
+
+    private func badSnapshot(providerError: String) -> LimitsSnapshot {
+        LimitsSnapshot(
+            loggedIn: true, plan: nil, windows: nil, creditsBalance: nil,
+            rateLimitReachedType: nil, details: [], daysUntilRenewal: nil,
+            renewalDate: nil, usageError: nil, providerError: providerError,
+            fetchedAt: fixedDate.addingTimeInterval(1)
+        )
+    }
+
+    /// a. успех→ошибка: state.snapshot — failed, lastGoodSnapshot — прежний успешный.
+    func test_successThenError_keepsLastGoodSnapshot() async {
+        let good = goodSnapshot(
+            plan: "max",
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil)]
+        )
+        let provider = MutableStubProvider(id: "claude", snapshot: good)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults)
+        )
+
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertEqual(vm.states.first?.snapshot, good)
+        XCTAssertEqual(vm.states.first?.lastGoodSnapshot, good)
+
+        let bad = badSnapshot(providerError: "network down")
+        await provider.setSnapshot(bad)
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.first?.snapshot, bad)
+        XCTAssertEqual(vm.states.first?.lastGoodSnapshot, good,
+                       "lastGoodSnapshot должен сохранить прежний успешный снапшот")
+    }
+
+    /// b. первая загрузка сразу с ошибкой: lastGoodSnapshot == nil.
+    func test_firstLoadError_hasNoLastGoodSnapshot() async {
+        let bad = badSnapshot(providerError: "auth.json missing")
+        let provider = MutableStubProvider(id: "claude", snapshot: bad)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults)
+        )
+
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.first?.snapshot, bad)
+        XCTAssertNil(vm.states.first?.lastGoodSnapshot,
+                     "при первой загрузке с ошибкой lastGoodSnapshot должен быть nil")
+    }
+
+    /// c. ошибка→успех: lastGoodSnapshot обновился новым успешным, snapshot свежий.
+    func test_errorThenSuccess_updatesLastGoodSnapshot() async {
+        let bad = badSnapshot(providerError: "network down")
+        let provider = MutableStubProvider(id: "claude", snapshot: bad)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults)
+        )
+
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertNil(vm.states.first?.lastGoodSnapshot)
+
+        let good = goodSnapshot(
+            plan: "pro",
+            windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 10, resetsAt: nil),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 20, resetsAt: nil)
+            ]
+        )
+        await provider.setSnapshot(good)
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.first?.snapshot, good)
+        XCTAssertEqual(vm.states.first?.lastGoodSnapshot, good,
+                       "lastGoodSnapshot должен обновиться новым успешным снапшотом")
+    }
+
+    /// d. disable/enable провайдера (setProviderEnabled): lastGoodSnapshot сохраняется.
+    func test_disableEnableProvider_preservesLastGoodSnapshot() async {
+        let good = goodSnapshot(
+            plan: "max",
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil)]
+        )
+        let provider = MutableStubProvider(id: "claude", snapshot: good)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults)
+        )
+
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertEqual(vm.states.first?.lastGoodSnapshot, good)
+
+        await provider.setSnapshot(badSnapshot(providerError: "boom"))
+
+        vm.setProviderEnabled(false, id: "claude")
+        XCTAssertTrue(vm.states.isEmpty, "выключенный провайдер должен пропасть из states")
+
+        vm.setProviderEnabled(true, id: "claude")
+        XCTAssertEqual(vm.states.first?.lastGoodSnapshot, good,
+                       "lastGoodSnapshot должен пережить disable/enable")
+    }
+
+    /// e. statusTooltip при stale содержит план/окна из last-good.
+    func test_statusTooltip_whenStale_showsLastGoodPlanAndWindows() async {
+        let good = goodSnapshot(
+            plan: "max",
+            windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 80, resetsAt: nil)
+            ]
+        )
+        let provider = MutableStubProvider(id: "claude", snapshot: good)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults)
+        )
+
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        let freshTooltip = vm.statusTooltip
+        XCTAssertTrue(freshTooltip.contains("Max"), "tooltip должен содержать план из свежего снапшота")
+
+        await provider.setSnapshot(badSnapshot(providerError: "network down"))
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        let staleTooltip = vm.statusTooltip
+        XCTAssertTrue(staleTooltip.contains("Max"),
+                       "stale tooltip должен показывать план из lastGoodSnapshot, а не '?'")
+        XCTAssertTrue(staleTooltip.contains("5h 50%"),
+                       "stale tooltip должен показывать 5h-окно из lastGoodSnapshot")
+        XCTAssertTrue(staleTooltip.contains("weekly 20%"),
+                       "stale tooltip должен показывать weekly-окно из lastGoodSnapshot")
+        XCTAssertFalse(staleTooltip.contains(": ?"),
+                       "stale tooltip не должен сваливаться в '?'")
+    }
+}
