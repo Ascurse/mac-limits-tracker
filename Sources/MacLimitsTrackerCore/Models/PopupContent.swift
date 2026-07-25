@@ -40,6 +40,7 @@ public struct ProviderSectionContent: Equatable {
     public let descriptor: ProviderDescriptor
     public let title: String
     public let rows: [PopupRow]
+    public let isStale: Bool
 }
 
 /// Сборка секций попапа из состояний провайдеров. Чистые функции — покрыты тестами.
@@ -72,9 +73,16 @@ public enum PopupContentBuilder {
         now: Date = Date(),
         thresholds: SeverityThresholds = .standard
     ) -> ProviderSectionContent {
-        ProviderSectionContent(descriptor: state.descriptor,
-                               title: state.descriptor.displayName,
-                               rows: rows(for: state.snapshot, now: now, thresholds: thresholds))
+        let resolved = SnapshotResolver.resolve(state)
+        var rows = rows(for: resolved.snapshot, now: now, thresholds: thresholds)
+        if resolved.isStale, let snapshot = resolved.snapshot, let error = resolved.error {
+            rows.append(.note("updated \(relativeFormatter.localizedString(for: snapshot.fetchedAt, relativeTo: now))"))
+            rows.append(.error(error))
+        }
+        return ProviderSectionContent(descriptor: state.descriptor,
+                                      title: state.descriptor.displayName,
+                                      rows: rows,
+                                      isStale: resolved.isStale)
     }
 
     private static func rows(
@@ -142,7 +150,7 @@ public enum PopupContentBuilder {
     }
 
     public static func updatedText(states: [ProviderState]) -> String {
-        let latest = states.map { $0.snapshot?.fetchedAt ?? .distantPast }.max() ?? .distantPast
+        let latest = states.map { SnapshotResolver.resolve($0).snapshot?.fetchedAt ?? .distantPast }.max() ?? .distantPast
         if latest == .distantPast { return "—" }
         return "Updated \(timeFormatter.string(from: latest))"
     }
