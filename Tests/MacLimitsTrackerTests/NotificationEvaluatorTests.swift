@@ -30,6 +30,30 @@ final class NotificationEvaluatorTests: XCTestCase {
     }
 
     // (a) normal → warning: ровно одно событие crossing.
+    /// Пин (bd mac-limits-tracker-1og, ревью N1): error-снапшот (windows == nil)
+    /// пропускается, baseline severity/resetsAt не трогается — после аварии
+    /// дедуп сравнивает с до-аварийной базой, ложных событий нет.
+    func test_errorSnapshot_skippedAndBaselinePreserved() {
+        let evaluator = NotificationEvaluator()
+        _ = evaluator.evaluate(states: [state(remaining: 50)], thresholds: .standard)
+
+        let errorSnap = LimitsSnapshot(
+            loggedIn: true, plan: nil, windows: nil,
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: "network down", fetchedAt: Date()
+        )
+        let errorState = ProviderState(descriptor: descriptor, snapshot: errorSnap,
+                                       lastGoodSnapshot: state(remaining: 50).snapshot)
+        XCTAssertEqual(evaluator.evaluate(states: [errorState], thresholds: .standard), [])
+
+        // baseline не сброшен: то же значение после аварии — дедуп, событий нет.
+        XCTAssertEqual(evaluator.evaluate(states: [state(remaining: 50)], thresholds: .standard), [])
+        // а реальное ухудшение против до-аварийной базы — ловится.
+        let events = evaluator.evaluate(states: [state(remaining: 10)], thresholds: .standard)
+        XCTAssertEqual(events.count, 1)
+    }
+
     func test_crossingIntoWarning_emitsOnce() {
         let e = NotificationEvaluator()
         XCTAssertEqual(e.evaluate(states: [state(remaining: 80)], thresholds: .standard), [])

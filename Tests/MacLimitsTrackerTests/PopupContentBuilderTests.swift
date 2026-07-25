@@ -431,3 +431,99 @@ final class PopupContentBuilderUpdatedTextTests: XCTestCase {
         XCTAssertTrue(text.hasPrefix("Updated "), "получено: \(text)")
     }
 }
+
+final class PopupContentBuilderStaleTests: XCTestCase {
+    private static let now = Date(timeIntervalSince1970: 2_000_000)
+    private static let past = Date(timeIntervalSince1970: 1_000_000)
+
+    private func claudeWindow(_ utilization: Double, resetsAt: Date? = nil) -> ClaudeUsageWindow {
+        ClaudeUsageWindow(utilizationPercent: utilization, resetsAt: resetsAt,
+                          limitDollars: nil, usedDollars: nil, remainingDollars: nil)
+    }
+
+    private func claudeStatus(
+        subscriptionType: String? = "max",
+        usage: ClaudeUsage? = nil,
+        usageError: String? = nil,
+        providerError: String? = nil,
+        fetchedAt: Date = Date(timeIntervalSince1970: 2_000_000)
+    ) -> ClaudeStatus {
+        ClaudeStatus(
+            loggedIn: true, authMethod: "claude.ai", apiProvider: nil, email: "a@b.co",
+            subscriptionType: subscriptionType, orgName: nil,
+            today: nil, latestDay: nil, lastComputedDate: nil,
+            totalSessions: nil, totalMessages: nil,
+            usage: usage, usageError: usageError,
+            fetchedAt: fetchedAt, providerError: providerError
+        )
+    }
+
+    func test_staleProviderError_rendersLastGoodDataWithNoteAndError() {
+        let lastGood = claudeStatus(
+            subscriptionType: "max",
+            usage: ClaudeUsage(fiveHour: claudeWindow(50), sevenDay: claudeWindow(50)),
+            fetchedAt: Self.past
+        ).toSnapshot()
+        let fresh = claudeStatus(providerError: "network down")
+        let state = ProviderState(descriptor: claudeDescriptor, snapshot: fresh.toSnapshot(), lastGoodSnapshot: lastGood)
+        let s = PopupContentBuilder.section(state, now: Self.now)
+
+        XCTAssertTrue(s.isStale)
+        XCTAssertEqual(s.rows.count, 5)
+        XCTAssertEqual(s.rows[0], .detail(key: "Plan", value: "max"))
+        guard case .window(let w) = s.rows[1] else {
+            return XCTFail("ожидалось окно из last-good, rows: \(s.rows)")
+        }
+        XCTAssertEqual(w.remainingPercent, 50)
+        guard case .note(let note) = s.rows[3] else {
+            return XCTFail("ожидалась .note 'updated ... ago', rows: \(s.rows)")
+        }
+        XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
+        XCTAssertEqual(s.rows[4], .error("network down"))
+    }
+
+    func test_providerErrorWithoutLastGood_isSingleErrorRowAndNotStale() {
+        let fresh = claudeStatus(providerError: "no auth.json")
+        let state = ProviderState(descriptor: claudeDescriptor, snapshot: fresh.toSnapshot(), lastGoodSnapshot: nil)
+        let s = PopupContentBuilder.section(state, now: Self.now)
+
+        XCTAssertFalse(s.isStale)
+        XCTAssertEqual(s.rows, [.error("no auth.json")])
+    }
+
+    func test_staleUsageError_mergesFreshPlanWithLastGoodWindows() {
+        let lastGood = claudeStatus(
+            subscriptionType: "old-plan",
+            usage: ClaudeUsage(fiveHour: claudeWindow(30), sevenDay: claudeWindow(30)),
+            fetchedAt: Self.past
+        ).toSnapshot()
+        let fresh = claudeStatus(subscriptionType: "new-plan", usageError: "usage endpoint 500")
+        let state = ProviderState(descriptor: claudeDescriptor, snapshot: fresh.toSnapshot(), lastGoodSnapshot: lastGood)
+        let s = PopupContentBuilder.section(state, now: Self.now)
+
+        XCTAssertTrue(s.isStale)
+        XCTAssertEqual(s.rows.count, 5)
+        XCTAssertEqual(s.rows[0], .detail(key: "Plan", value: "new-plan"))
+        guard case .window(let w) = s.rows[1] else {
+            return XCTFail("ожидалось окно из last-good, rows: \(s.rows)")
+        }
+        XCTAssertEqual(w.remainingPercent, 70)
+        guard case .note(let note) = s.rows[3] else {
+            return XCTFail("ожидалась .note 'updated ... ago', rows: \(s.rows)")
+        }
+        XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
+        XCTAssertEqual(s.rows[4], .error("usage endpoint 500"))
+    }
+
+    func test_updatedText_staleUsesLastGoodFetchedAt() {
+        let lastGood = claudeStatus(subscriptionType: "max", fetchedAt: Self.past).toSnapshot()
+        let fresh = claudeStatus(providerError: "network down", fetchedAt: Self.now).toSnapshot()
+        let state = ProviderState(descriptor: claudeDescriptor, snapshot: fresh, lastGoodSnapshot: lastGood)
+        let text = PopupContentBuilder.updatedText(states: [state])
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        XCTAssertEqual(text, "Updated \(formatter.string(from: Self.past))")
+    }
+}

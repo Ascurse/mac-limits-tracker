@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-25 — `existingById` не сохраняет `lastGoodSnapshot` при disable/enable провайдера
+
+**Симптом:** после выключения и повторного включения провайдера `ProviderState.lastGoodSnapshot` сбрасывается в `nil`, хотя `applyProviderSettingsChange`/`reconcileDynamicProviders` используют `existingById`.
+**Причина:** при выключении провайдер пропадает из `states`, поэтому на следующем `existingById` для него нет записи — восстанавливается только `snapshot: nil`.
+**Обход:** держать отдельный словарь `lastGoodSnapshots: [String: LimitsSnapshot]` в `LimitsViewModel`, обновлять его в `refresh()` и подставлять при создании fallback-`ProviderState`.
+**Где это в коде:** [Sources/MacLimitsTrackerCore/LimitsViewModel.swift](../../Sources/MacLimitsTrackerCore/LimitsViewModel.swift).
+
 ## 2026-07-25 — Data.write atomic не задаёт права для credentials
 
 **Симптом:** credentials-файл записывается без нужных 0600-прав, несмотря на `.atomic`, или приходится вызывать `FileManager.createFile`, а `replaceItemAt` возвращает `nil` и хочется assert-ить.

@@ -97,6 +97,7 @@ struct TUIStatusView: View {
             .offset(x: 8, y: -8)
         }
         .padding(.top, 8)
+        .opacity(s.isStale ? 0.55 : 1)
     }
 
     @ViewBuilder

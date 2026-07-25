@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-25 — Stale-данные при сетевой ошибке: resolver в Core, menu bar не мигрирован (bd mac-limits-tracker-1og)
+
+**Контекст:** сетевая ошибка заменяла данные провайдера красной ошибкой — попап «слеп», хотя данные минутной давности достаточны.
+**Решение:** чистый `SnapshotResolver.resolve(ProviderState) -> ResolvedDisplay {snapshot, isStale, error}` — единая точка правил stale: last-good хранится в `ProviderState.lastGoodSnapshot` + backup-словарь `lastGoodSnapshots` в ViewModel (переживает disable/enable, т.к. state удаляется из `states`); попап/виджет/тултип/`updatedText` читают resolved-снапшот, при stale — приглушение `.opacity(0.55)`, `.note("updated … ago")` и мелкая `.error` внизу секции. **Сознательно НЕ мигрированы** `statusTitle`/`MenuBarDisplayMode.menuBarText` (ревью N2): во время аварии меню-бар показывает «Short: ?» / «—» как сигнал проблемы (наряду с иконкой-треугольником), а тултип — last-known значения; это расхождение intended, не баг. `rateLimitReachedType` в stale-мерже зануляется — иначе старый «rate limit reached» выглядит свежей ошибкой.
+**Почему:** resolver в Core держит темы тонкими (новых кейсов `PopupRow` нет); backup-словарь добавлен после опровержения допущения плана, что `existingById` переживает disable/enable (см. gotcha 2026-07-25).
+**Последствия:** `NotificationEvaluator` читает сырые снапшоты — error-снапшот без окон пропускается, baseline уведомлений переживает аварию (пин-тест `test_errorSnapshot_skippedAndBaselinePreserved`); если evaluator когда-либо переведут на resolved — этот пин сломается первым. Осознанный риск: `isGood` не требует `windows != nil`, поэтому «хороший» снапшот без окон (Kimi с пустым `limits[]`, Codex с двумя nil-окнами) даунгрейдит lastGood — редко, самолечится следующим удачным fetch.
+
 ## 2026-07-25 — Kimi: авто-refresh access_token (bd mac-limits-tracker-8kz)
 
 **Контекст:** access_token Kimi живёт ~15 минут, CLI не обновляет его в фоне, и вне свежего окна попап показывал «Kimi login expired».
