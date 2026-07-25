@@ -81,6 +81,7 @@ struct TerminalStatusView: View {
                 rowView(row, accent: accent)
             }
         }
+        .opacity(s.isStale ? 0.55 : 1)
     }
 
     @ViewBuilder

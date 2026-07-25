@@ -53,6 +53,7 @@ struct SystemStatusView: View {
                 rowView(row)
             }
         }
+        .opacity(s.isStale ? 0.55 : 1)
     }
 
     @ViewBuilder

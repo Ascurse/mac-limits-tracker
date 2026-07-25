@@ -49,7 +49,9 @@ struct DesktopWidgetView: View {
     }()
 
     private var latestUpdateText: String {
-        let latest = viewModel.states.map { $0.snapshot?.fetchedAt ?? .distantPast }.max() ?? .distantPast
+        let latest = viewModel.states.map {
+            SnapshotResolver.resolve($0).snapshot?.fetchedAt ?? .distantPast
+        }.max() ?? .distantPast
         if latest == .distantPast { return "—" }
         return Self.timeFormatter.string(from: latest)
     }
@@ -77,8 +79,9 @@ struct DesktopWidgetView: View {
 
     private func providerSection(_ state: ProviderState) -> some View {
         let color = Color(hex: state.descriptor.accentColorHex)
+        let resolved = SnapshotResolver.resolve(state)
         let error = state.snapshot?.providerError ?? state.snapshot?.usageError
-        let items = windows(for: state.snapshot)
+        let items = windows(for: resolved.snapshot)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle().fill(color).frame(width: 7, height: 7)
@@ -86,7 +89,21 @@ struct DesktopWidgetView: View {
                     .font(.caption.weight(.semibold))
                 Spacer()
             }
-            if let error {
+            // Stale-проверка раньше error: у stale-состояния ошибка тоже есть,
+            // но бары рисуем из last-good.
+            if resolved.isStale {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, window in
+                    windowRow(window, color: color)
+                }
+                .opacity(0.55)
+                if let staleError = resolved.error {
+                    Label(staleError, systemImage: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                        .opacity(0.55)
+                }
+            } else if let error {
                 Label(error, systemImage: "exclamationmark.triangle")
                     .font(.caption2)
                     .foregroundStyle(.red)
