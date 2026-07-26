@@ -14,3 +14,9 @@
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# bd worktrees
+.worktrees/
+
+# OpenCode session state
+.omo/
