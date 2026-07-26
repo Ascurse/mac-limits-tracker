@@ -22,6 +22,7 @@ public final class LimitsViewModel: ObservableObject {
     private let dynamicProviders: [DynamicProviderSpec]
     private let settingsStore: ProviderSettingsStore
     private let appSettingsStore: AppSettingsStore
+    private let historyStore: HistoryStore
     private var refreshTask: Task<Void, Never>?
     private var timer: Timer?
     /// Последний успешный снапшот по id провайдера. Переживает disable/enable и
@@ -33,12 +34,14 @@ public final class LimitsViewModel: ObservableObject {
         providers: [any LimitsProvider] = ProviderRegistry.makeDefault(),
         settingsStore: ProviderSettingsStore = ProviderSettingsStore(),
         appSettingsStore: AppSettingsStore = AppSettingsStore(),
+        historyStore: HistoryStore = HistoryStore(),
         dynamicProviders: [DynamicProviderSpec] = []
     ) {
         self.allProviders = providers
         self.dynamicProviders = dynamicProviders
         self.settingsStore = settingsStore
         self.appSettingsStore = appSettingsStore
+        self.historyStore = historyStore
         let settings = settingsStore.settings(for: Self.settingsIds(providers: providers, specs: dynamicProviders))
         self.providerSettings = settings
         self.states = Self.enabledProviders(providers, settings: settings)
@@ -96,6 +99,22 @@ public final class LimitsViewModel: ObservableObject {
                     if let lastGood { self.lastGoodSnapshots[provider.descriptor.id] = lastGood }
                     return ProviderState(descriptor: provider.descriptor, snapshot: snapshot, lastGoodSnapshot: lastGood)
                 }
+                for (provider, snapshot) in zip(providers, snapshots) {
+                    guard snapshot.providerError == nil,
+                          snapshot.usageError == nil,
+                          let windows = snapshot.windows else { continue }
+                    for window in windows {
+                        guard let windowMins = window.windowDurationMins,
+                              let usedPercent = window.usedPercent else { continue }
+                        self.historyStore.append(
+                            providerId: provider.descriptor.id,
+                            windowMins: windowMins,
+                            fetchedAt: snapshot.fetchedAt,
+                            usedPercent: usedPercent,
+                            resetsAt: window.resetsAt
+                        )
+                    }
+                }
                 self.isRefreshing = false
             }
         }
@@ -144,6 +163,10 @@ public final class LimitsViewModel: ObservableObject {
             }
             return results.compactMap { $0 }
         }
+    }
+
+    public func historySamples(providerId: String) -> [UsageSample] {
+        historyStore.samples(providerId: providerId, since: .distantPast)
     }
 
     func startTimer() {

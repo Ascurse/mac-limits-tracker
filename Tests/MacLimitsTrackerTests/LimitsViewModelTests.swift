@@ -71,22 +71,33 @@ private struct GatedProvider: LimitsProvider {
 final class LimitsViewModelProviderSettingsTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "LimitsViewModelProviderSettingsTests"
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
         super.tearDown()
     }
 
     func test_noSettings_showsAllProvidersInRegistryOrder() {
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "codex"])
     }
@@ -99,7 +110,8 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         ])
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"])
     }
@@ -112,7 +124,8 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         ])
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["codex", "claude"])
     }
@@ -120,7 +133,8 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
     func test_setProviderEnabled_false_removesFromStatesImmediately() {
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
         vm.setProviderEnabled(false, id: "codex")
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude"])
@@ -130,13 +144,15 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         let store = ProviderSettingsStore(defaults: defaults)
         let vm1 = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
         vm1.setProviderEnabled(false, id: "codex")
 
         let vm2 = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
         XCTAssertEqual(vm2.states.map(\.descriptor.id), ["claude"])
     }
@@ -145,14 +161,16 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         let store = ProviderSettingsStore(defaults: defaults)
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
         vm.moveProviderUp(id: "codex")
         XCTAssertEqual(vm.states.map(\.descriptor.id), ["codex", "claude"])
 
         let vm2 = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
         XCTAssertEqual(vm2.states.map(\.descriptor.id), ["codex", "claude"])
     }
@@ -165,7 +183,8 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         ])
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
         let entries = vm.providerSettingsWithDescriptors
         XCTAssertEqual(entries.map(\.setting.id), ["codex", "claude"])
@@ -177,7 +196,8 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         let store = ProviderSettingsStore(defaults: defaults)
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), StubProvider(id: "codex")],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
         vm.setProviderEnabled(false, id: "claude")
         vm.setProviderEnabled(true, id: "claude")
@@ -195,7 +215,8 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
         let store = ProviderSettingsStore(defaults: defaults)
         let vm = LimitsViewModel(
             providers: [StubProvider(id: "claude"), GatedProvider(id: "codex", gate: gate)],
-            settingsStore: store
+            settingsStore: store,
+            historyStore: historyStore
         )
 
         // Первый refresh: gate открыт, оба провайдера сразу отдают снапшот —
@@ -248,15 +269,25 @@ private final class AvailabilityFlag: @unchecked Sendable {
 final class LimitsViewModelDynamicProvidersTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "LimitsViewModelDynamicProvidersTests"
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
         super.tearDown()
     }
 
@@ -272,6 +303,7 @@ final class LimitsViewModelDynamicProvidersTests: XCTestCase {
         LimitsViewModel(
             providers: providers ?? [StubProvider(id: "claude")],
             settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore,
             dynamicProviders: [kimiSpec(flag)]
         )
     }
@@ -429,15 +461,25 @@ final class LimitsViewModelTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "LimitsViewModelLastGoodSnapshotTests"
     private let fixedDate = Date(timeIntervalSince1970: 3_000_000)
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
         super.tearDown()
     }
 
@@ -476,7 +518,8 @@ final class LimitsViewModelTests: XCTestCase {
         let provider = MutableStubProvider(id: "claude", snapshot: good)
         let vm = LimitsViewModel(
             providers: [provider],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
 
         vm.refresh()
@@ -500,7 +543,8 @@ final class LimitsViewModelTests: XCTestCase {
         let provider = MutableStubProvider(id: "claude", snapshot: bad)
         let vm = LimitsViewModel(
             providers: [provider],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
 
         vm.refresh()
@@ -517,7 +561,8 @@ final class LimitsViewModelTests: XCTestCase {
         let provider = MutableStubProvider(id: "claude", snapshot: bad)
         let vm = LimitsViewModel(
             providers: [provider],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
 
         vm.refresh()
@@ -549,7 +594,8 @@ final class LimitsViewModelTests: XCTestCase {
         let provider = MutableStubProvider(id: "claude", snapshot: good)
         let vm = LimitsViewModel(
             providers: [provider],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
 
         vm.refresh()
@@ -578,7 +624,8 @@ final class LimitsViewModelTests: XCTestCase {
         let provider = MutableStubProvider(id: "claude", snapshot: good)
         let vm = LimitsViewModel(
             providers: [provider],
-            settingsStore: ProviderSettingsStore(defaults: defaults)
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
 
         vm.refresh()
