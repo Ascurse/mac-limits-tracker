@@ -35,3 +35,29 @@ final class TuiGaugeTests: XCTestCase {
         XCTAssertEqual(TuiGauge.filledCount(remainingPercent: 25, width: 8), 2)
     }
 }
+
+final class AsciiSparklineTests: XCTestCase {
+    func test_render_empty_returnsEmptyString() {
+        XCTAssertEqual(AsciiSparkline.render(usedPercents: []), "")
+    }
+
+    func test_render_singleValue_returnsSingleBlock() {
+        XCTAssertEqual(AsciiSparkline.render(usedPercents: [0]), "▁")
+        XCTAssertEqual(AsciiSparkline.render(usedPercents: [100]), "█")
+        XCTAssertEqual(AsciiSparkline.render(usedPercents: [50]), "▄")
+    }
+
+    func test_render_zeroAndHundred_mapToLowestAndHighestBlock() {
+        XCTAssertEqual(AsciiSparkline.render(usedPercents: [0, 100]), "▁█")
+    }
+
+    func test_render_valuesClamp_outOfRange() {
+        XCTAssertEqual(AsciiSparkline.render(usedPercents: [-20, 150]), "▁█")
+    }
+
+    func test_render_moreValuesThanWidth_bucketsToWidth() {
+        let result = AsciiSparkline.render(usedPercents: [0, 100, 0, 100], width: 2)
+        XCTAssertEqual(result, "██")
+        XCTAssertEqual(result.count, 2)
+    }
+}
