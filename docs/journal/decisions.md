@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-26 — HistoryStore: первая JSON-персистентность на диске + sparkline за 24ч (bd mac-limits-tracker-08m, gh #31)
+
+**Контекст:** каждый refresh перезаписывал снапшот, история нигде не сохранялась — невозможны ни графики, ни burn-rate прогноз (gvo), ни экспорт (dti). До этого все сторы проекта жили на UserDefaults.
+**Решение:** `HistoryStore` (Core, `Storage/`) — плоский `history.json` (`{version: 1, samples: [UsageSample{providerId, windowMins, fetchedAt, usedPercent, resetsAt}]}`) в `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`, ретенция 7 дней (прунинг при append), дедуп подряд идущих одинаковых значений **по ключу (providerId, windowMins)** — сдвиг `fetchedAt` вместо новой строки (без этого ночные плато раздувают файл; поиск именно по ключу, а не по `samples.last`, т.к. append'ы окон чередуются внутри одного refresh). Записываются только окна с реальными данными (nil `usedPercent`/ошибки снапшота — пропуск). Запись — в `refresh()` после `self.states = ...`. В попапе новый `PopupRow.sparkline(SparklineContent)` после каждой window-строки с данными за 24ч: System — Swift Charts (`LineMark`+`PointMark`, без PointMark одиночная точка не рисуется), Terminal/Phosphor/TUI — `AsciiSparkline` (`▁▂▃▄▅▆▇█`, бакет-максимум при даунсемпле) в Core рядом с `AsciiBar`/`TuiGauge`. Идентичность окна — `windowMins`, никогда не индекс.
+**Почему:** плоский массив сэмплов проще в append/прунинге/будущем CSV-экспорте, чем вложенная по провайдерам структура; 7 дней покрывают полный цикл weekly-окна для будущего прогноза; `resetsAt` в сэмпле позволит детектить ролловер окна; дедуп по ключу — единственный вариант, работающий при многооконных провайдерах.
+**Последствия:** новый кейс `PopupRow` обрабатывается во всех 4 темах (exhaustive switch — compile-enforced); Desktop widget спарклайнов не имеет (не читает `PopupRow`). `PopupContentBuilder.section` получил параметр `history: [UsageSample] = []` — старые вызовы компилируются без изменений. **Все конструкции `LimitsViewModel` в тестах обязаны инжектить изолированный `HistoryStore(directory:)`** — дефолт пишет в реальный Application Support (поймано на поллюции history.json тестовыми сэмплами).
+
 ## 2026-07-25 — Stale-данные при сетевой ошибке: resolver в Core, menu bar не мигрирован (bd mac-limits-tracker-1og)
 
 **Контекст:** сетевая ошибка заменяла данные провайдера красной ошибкой — попап «слеп», хотя данные минутной давности достаточны.
