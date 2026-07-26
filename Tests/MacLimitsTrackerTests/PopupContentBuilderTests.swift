@@ -432,6 +432,132 @@ final class PopupContentBuilderUpdatedTextTests: XCTestCase {
     }
 }
 
+/// Спарклайн использования за 24ч: билдер вставляет `.sparkline` сразу после
+/// строки своего окна; идентичность окна — windowMins, никогда не индекс.
+final class PopupContentBuilderSparklineTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func makeState(fiveHourUsed: Double? = 28, weeklyUsed: Double? = 69) -> ProviderState {
+        let snap = LimitsSnapshot(
+            loggedIn: true, plan: "max",
+            windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: fiveHourUsed, resetsAt: nil),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: weeklyUsed, resetsAt: nil),
+            ],
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: nil, fetchedAt: now
+        )
+        return ProviderState(descriptor: claudeDescriptor, snapshot: snap)
+    }
+
+    private func sample(windowMins: Int, hoursAgo: Double, used: Double) -> UsageSample {
+        UsageSample(providerId: "claude", windowMins: windowMins,
+                    fetchedAt: now.addingTimeInterval(-hoursAgo * 3600),
+                    usedPercent: used, resetsAt: nil)
+    }
+
+    private func sparklines(_ s: ProviderSectionContent) -> [SparklineContent] {
+        s.rows.compactMap {
+            if case .sparkline(let c) = $0 { return c }
+            return nil
+        }
+    }
+
+    func test_section_withHistory_insertsSparklineAfterMatchingWindowRow() {
+        // Порядок входных сэмплов намеренно не хронологический.
+        let history = [
+            sample(windowMins: 300, hoursAgo: 2, used: 40),
+            sample(windowMins: 300, hoursAgo: 10, used: 20),
+            sample(windowMins: 300, hoursAgo: 5, used: 30),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+
+        XCTAssertEqual(s.rows.count, 4)
+        guard case .window(let fh) = s.rows[1] else { return XCTFail("rows: \(s.rows)") }
+        XCTAssertEqual(fh.shortLabel, "5h")
+        guard case .sparkline(let spark) = s.rows[2] else {
+            return XCTFail("ожидался .sparkline сразу после строки 5h, rows: \(s.rows)")
+        }
+        XCTAssertEqual(spark.windowMins, 300)
+        XCTAssertEqual(spark.shortLabel, "5h")
+        // Точки отсортированы по времени по возрастанию.
+        XCTAssertEqual(spark.points.map(\.usedPercent), [20, 30, 40])
+        XCTAssertTrue(spark.points.map(\.time) == spark.points.map(\.time).sorted())
+        guard case .window(let wk) = s.rows[3] else { return XCTFail("rows: \(s.rows)") }
+        XCTAssertEqual(wk.shortLabel, "wk")
+    }
+
+    func test_section_emptyHistory_noSparklineRows() {
+        let s = PopupContentBuilder.section(makeState(), now: now, history: [])
+        XCTAssertTrue(sparklines(s).isEmpty)
+    }
+
+    func test_section_samplesOlderThan24h_noSparklineRow() {
+        let history = [
+            sample(windowMins: 300, hoursAgo: 25, used: 40),
+            sample(windowMins: 300, hoursAgo: 48, used: 20),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        XCTAssertTrue(sparklines(s).isEmpty)
+    }
+
+    func test_section_windowWithNilUsedPercent_noSparklineRow() {
+        let history = [sample(windowMins: 300, hoursAgo: 1, used: 40)]
+        let s = PopupContentBuilder.section(makeState(fiveHourUsed: nil), now: now, history: history)
+        // Окно без данных — .note, спарклайн ему не положен даже при наличии истории.
+        guard case .note = s.rows[1] else { return XCTFail("rows: \(s.rows)") }
+        XCTAssertTrue(sparklines(s).isEmpty)
+    }
+
+    func test_section_historyForOtherWindow_doesNotLeakIntoRow() {
+        let history = [
+            sample(windowMins: 10080, hoursAgo: 3, used: 55),
+            sample(windowMins: 10080, hoursAgo: 12, used: 50),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+
+        let sparks = sparklines(s)
+        XCTAssertEqual(sparks.count, 1)
+        XCTAssertEqual(sparks.first?.windowMins, 10080)
+        XCTAssertEqual(sparks.first?.shortLabel, "wk")
+        // Между строкой 5h и строкой wk спарклайна нет.
+        guard case .window = s.rows[1], case .window = s.rows[2],
+              case .sparkline = s.rows[3] else {
+            return XCTFail("спарклайн weekly должен идти после строки wk, rows: \(s.rows)")
+        }
+    }
+
+    func test_section_staleState_stillInsertsSparklineForLastGoodSnapshot() {
+        let lastGood = LimitsSnapshot(
+            loggedIn: true, plan: "max",
+            windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 50, resetsAt: nil),
+            ],
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: nil, fetchedAt: now.addingTimeInterval(-3600)
+        )
+        let fresh = LimitsSnapshot(
+            loggedIn: true, plan: nil, windows: nil,
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: "network down", fetchedAt: now
+        )
+        let state = ProviderState(descriptor: claudeDescriptor, snapshot: fresh, lastGoodSnapshot: lastGood)
+        let history = [sample(windowMins: 300, hoursAgo: 1, used: 45)]
+        let s = PopupContentBuilder.section(state, now: now, history: history)
+
+        XCTAssertTrue(s.isStale)
+        guard case .window = s.rows[1], case .sparkline(let spark) = s.rows[2] else {
+            return XCTFail("спарклайн обязан строиться по last-good снапшоту, rows: \(s.rows)")
+        }
+        XCTAssertEqual(spark.windowMins, 300)
+        XCTAssertEqual(spark.points.map(\.usedPercent), [45])
+    }
+}
+
 final class PopupContentBuilderStaleTests: XCTestCase {
     private static let now = Date(timeIntervalSince1970: 2_000_000)
     private static let past = Date(timeIntervalSince1970: 1_000_000)

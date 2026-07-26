@@ -84,15 +84,25 @@ final class AppSettingsStoreTests: XCTestCase {
 final class LimitsViewModelRefreshIntervalTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "LimitsViewModelRefreshIntervalTests"
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
         super.tearDown()
     }
 
@@ -100,7 +110,8 @@ final class LimitsViewModelRefreshIntervalTests: XCTestCase {
         LimitsViewModel(
             providers: [StubProvider(id: "claude")],
             settingsStore: ProviderSettingsStore(defaults: defaults),
-            appSettingsStore: AppSettingsStore(defaults: defaults)
+            appSettingsStore: AppSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
     }
 
@@ -130,15 +141,25 @@ final class LimitsViewModelRefreshIntervalTests: XCTestCase {
 final class LimitsViewModelSeverityThresholdsTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "LimitsViewModelSeverityThresholdsTests"
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
         super.tearDown()
     }
 
@@ -146,7 +167,8 @@ final class LimitsViewModelSeverityThresholdsTests: XCTestCase {
         LimitsViewModel(
             providers: [StubProvider(id: "claude")],
             settingsStore: ProviderSettingsStore(defaults: defaults),
-            appSettingsStore: AppSettingsStore(defaults: defaults)
+            appSettingsStore: AppSettingsStore(defaults: defaults),
+            historyStore: historyStore
         )
     }
 

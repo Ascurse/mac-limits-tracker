@@ -20,7 +20,10 @@ struct PhosphorStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             ForEach(viewModel.states) { state in
-                section(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
+                section(PopupContentBuilder.section(
+                    state,
+                    history: viewModel.historySamples(providerId: state.descriptor.id),
+                    thresholds: viewModel.severityThresholds))
             }
             promptLine
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
@@ -126,6 +129,10 @@ struct PhosphorStatusView: View {
                         .padding(.leading, 26)
                 }
             }
+        case .sparkline(let spark):
+            Text(AsciiSparkline.render(usedPercents: spark.points.map(\.usedPercent)))
+                .foregroundStyle(Palette.mid)
+                .padding(.leading, 26)
         case .error(let message):
             Text("! \(message)").foregroundStyle(Palette.heading)
         case .note(let text):

@@ -22,7 +22,10 @@ struct TUIStatusView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
             ForEach(viewModel.states) { state in
-                panel(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
+                panel(PopupContentBuilder.section(
+                    state,
+                    history: viewModel.historySamples(providerId: state.descriptor.id),
+                    thresholds: viewModel.severityThresholds))
             }
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
                 .tint(Palette.normal)
@@ -127,6 +130,8 @@ struct TUIStatusView: View {
                         .padding(.leading, 24)
                 }
             }
+        case .sparkline(let spark):
+            sparklineGauge(spark)
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
         case .note(let text):
@@ -147,6 +152,18 @@ struct TUIStatusView: View {
             + Text("]")
         )
         .foregroundStyle(Palette.dim)
+    }
+
+    // Спарклайн [▁▂▄█…] в стиле датчика: заполнено = использовано.
+    private func sparklineGauge(_ spark: SparklineContent) -> some View {
+        (
+            Text("[")
+            + Text(AsciiSparkline.render(usedPercents: spark.points.map(\.usedPercent)))
+                .foregroundStyle(Palette.normal)
+            + Text("]")
+        )
+        .foregroundStyle(Palette.dim)
+        .padding(.leading, 24)
     }
 
     private func severityColor(_ severity: Severity) -> Color {

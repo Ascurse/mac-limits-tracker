@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import MacLimitsTrackerCore
 
 /// Системная тема: текущий нативный вид попапа.
@@ -11,7 +12,10 @@ struct SystemStatusView: View {
             header
             ForEach(viewModel.states) { state in
                 Divider()
-                section(PopupContentBuilder.section(state, thresholds: viewModel.severityThresholds))
+                section(PopupContentBuilder.section(
+                    state,
+                    history: viewModel.historySamples(providerId: state.descriptor.id),
+                    thresholds: viewModel.severityThresholds))
             }
             Divider()
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
@@ -46,24 +50,35 @@ struct SystemStatusView: View {
     }
 
     private func section(_ s: ProviderSectionContent) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel(s.title, color: Color(hex: s.descriptor.accentColorHex),
+        let accent = Color(hex: s.descriptor.accentColorHex)
+        return VStack(alignment: .leading, spacing: 8) {
+            sectionLabel(s.title, color: accent,
                          loginHelp: s.descriptor.loginHelp)
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
-                rowView(row)
+                rowView(row, accent: accent)
             }
         }
         .opacity(s.isStale ? 0.55 : 1)
     }
 
     @ViewBuilder
-    private func rowView(_ row: PopupRow) -> some View {
+    private func rowView(_ row: PopupRow, accent: Color) -> some View {
         switch row {
         case .detail(let key, let value):
             detailRow(key, value)
         case .window(let w):
             detailRow("\(w.longLabel) remaining", w.remainingText)
             detailRow("\(w.longLabel) resets", w.resetText ?? "—")
+        case .sparkline(let spark):
+            // PointMark обязателен: одиночный LineMark с одной точкой ничего не рисует.
+            Chart(spark.points, id: \.time) { point in
+                LineMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
+                PointMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .foregroundStyle(accent)
+            .frame(height: 28)
         case .error(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)

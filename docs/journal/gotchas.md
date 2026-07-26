@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-26 — `LimitsViewModel` в тестах без инжекта `historyStore` пишет в реальный Application Support
+
+**Симптом:** после `swift test` в `~/Library/Application Support/dev.ascurse.MacLimitsTracker/history.json` появляются фейковые сэмплы от StubProvider'ов.
+**Причина:** дефолтный параметр `historyStore: HistoryStore = HistoryStore()` резолвится в продакшн-путь; любой тест, конструирующий VM без этого параметра и вызывающий `refresh()` с оконным снапшотом, пишет в реальный файл.
+**Обход:** в тестах всегда инжектить `HistoryStore(directory:)` на temp-dir (паттерн — `HistoryStoreTests`/`LimitsViewModelHistoryTests`); `LimitsViewModelTests` и `AppSettingsStoreTests` уже переведены.
+**Где это в коде:** [Sources/MacLimitsTrackerCore/LimitsViewModel.swift](../../Sources/MacLimitsTrackerCore/LimitsViewModel.swift), [Sources/MacLimitsTrackerCore/Storage/HistoryStore.swift](../../Sources/MacLimitsTrackerCore/Storage/HistoryStore.swift).
+
 ## 2026-07-25 — `existingById` не сохраняет `lastGoodSnapshot` при disable/enable провайдера
 
 **Симптом:** после выключения и повторного включения провайдера `ProviderState.lastGoodSnapshot` сбрасывается в `nil`, хотя `applyProviderSettingsChange`/`reconcileDynamicProviders` используют `existingById`.

@@ -5,8 +5,33 @@ import Foundation
 public enum PopupRow: Equatable {
     case detail(key: String, value: String)
     case window(WindowContent)
+    case sparkline(SparklineContent)
     case error(String)
     case note(String)
+}
+
+/// Одна точка спарклайна: отдельный struct, т.к. кортеж не синтезирует Equatable.
+public struct SparklinePoint: Equatable, Sendable {
+    public let time: Date
+    public let usedPercent: Double
+
+    public init(time: Date, usedPercent: Double) {
+        self.time = time
+        self.usedPercent = usedPercent
+    }
+}
+
+/// Спарклайн использования за 24ч для одного окна лимита.
+public struct SparklineContent: Equatable, Sendable {
+    public let windowMins: Int
+    public let shortLabel: String
+    public let points: [SparklinePoint]
+
+    public init(windowMins: Int, shortLabel: String, points: [SparklinePoint]) {
+        self.windowMins = windowMins
+        self.shortLabel = shortLabel
+        self.points = points
+    }
 }
 
 /// Серьёзность остатка лимита: пороги по ОСТАТКУ (не по использованному).
@@ -71,10 +96,11 @@ public enum PopupContentBuilder {
     public static func section(
         _ state: ProviderState,
         now: Date = Date(),
+        history: [UsageSample] = [],
         thresholds: SeverityThresholds = .standard
     ) -> ProviderSectionContent {
         let resolved = SnapshotResolver.resolve(state)
-        var rows = rows(for: resolved.snapshot, now: now, thresholds: thresholds)
+        var rows = rows(for: resolved.snapshot, now: now, history: history, thresholds: thresholds)
         if resolved.isStale, let snapshot = resolved.snapshot, let error = resolved.error {
             rows.append(.note("updated \(relativeFormatter.localizedString(for: snapshot.fetchedAt, relativeTo: now))"))
             rows.append(.error(error))
@@ -88,13 +114,14 @@ public enum PopupContentBuilder {
     private static func rows(
         for snapshot: LimitsSnapshot?,
         now: Date,
+        history: [UsageSample],
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
         guard let snap = snapshot else { return [.note("Loading…")] }
         if let e = snap.providerError { return [.error(e)] }
 
         var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
-        rows.append(contentsOf: usageRows(snap, now: now, thresholds: thresholds))
+        rows.append(contentsOf: usageRows(snap, now: now, history: history, thresholds: thresholds))
         rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
         rows.append(contentsOf: renewalRows(snap, now: now))
         return rows
@@ -105,13 +132,14 @@ public enum PopupContentBuilder {
     private static func usageRows(
         _ snap: LimitsSnapshot,
         now: Date,
+        history: [UsageSample],
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
         guard let windows = snap.windows else {
             if let ue = snap.usageError { return [.error(ue)] }
             return [.note("Loading usage…")]
         }
-        var rows = windowRows(windows, now: now, thresholds: thresholds)
+        var rows = windowRows(windows, now: now, history: history, thresholds: thresholds)
         if let bal = snap.creditsBalance, !bal.isEmpty {
             rows.append(.detail(key: "Credits", value: bal))
         }
@@ -123,18 +151,31 @@ public enum PopupContentBuilder {
 
     /// Окна снапшота в уже заданном мапперами порядке; `usedPercent == nil` — слот
     /// заявлен, данных нет («… usage unavailable», раньше было только у Claude).
+    /// После каждого окна с данными — спарклайн его использования за последние 24ч,
+    /// если в истории есть сэмплы; идентичность окна — windowMins, никогда не индекс.
     private static func windowRows(
         _ windows: [SnapshotWindow],
         now: Date,
+        history: [UsageSample],
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
-        windows.map { w in
+        let cutoff = now.addingTimeInterval(-24 * 3600)
+        return windows.flatMap { w -> [PopupRow] in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
-            return windowRow(short: labels.short, long: labels.long,
-                             remaining: w.usedPercent.map { max(0, 100 - $0) },
-                             resetsAt: w.resetsAt, now: now,
-                             unavailable: "\(labels.long) usage unavailable",
-                             thresholds: thresholds)
+            let row = windowRow(short: labels.short, long: labels.long,
+                                remaining: w.usedPercent.map { max(0, 100 - $0) },
+                                resetsAt: w.resetsAt, now: now,
+                                unavailable: "\(labels.long) usage unavailable",
+                                thresholds: thresholds)
+            guard w.usedPercent != nil, let durationMins = w.windowDurationMins else { return [row] }
+            let points = history
+                .filter { $0.windowMins == durationMins && $0.fetchedAt >= cutoff }
+                .sorted { $0.fetchedAt < $1.fetchedAt }
+                .map { SparklinePoint(time: $0.fetchedAt, usedPercent: $0.usedPercent) }
+            guard !points.isEmpty else { return [row] }
+            let sparkline = SparklineContent(windowMins: durationMins,
+                                             shortLabel: labels.short, points: points)
+            return [row, .sparkline(sparkline)]
         }
     }
 
