@@ -60,19 +60,28 @@ struct DesktopWidgetView: View {
         let label: String
         let remainingPercent: Double
         let resetText: String
+        let severity: Severity
     }
 
     /// Только окна с реальными данными — заглушки со `usedPercent == nil` не отображаются
     /// (для них секция целиком покажет «Usage unavailable», как раньше у Claude).
-    private func windows(for snapshot: LimitsSnapshot?) -> [LimitWindow] {
+    private func windows(
+        for snapshot: LimitsSnapshot?,
+        thresholds: SeverityThresholds
+    ) -> [LimitWindow] {
         guard let windows = snapshot?.windows else { return [] }
         return windows.compactMap { w in
             guard let used = w.usedPercent else { return nil }
             let label = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins).short
+            let remainingPercent = LimitsFormatting.remainingPercent(usedPercent: used)
             return LimitWindow(
                 label: label,
-                remainingPercent: LimitsFormatting.remainingPercent(usedPercent: used),
-                resetText: LimitsFormatting.resetText(resetsAt: w.resetsAt)
+                remainingPercent: remainingPercent,
+                resetText: LimitsFormatting.resetText(resetsAt: w.resetsAt),
+                severity: Severity.from(
+                    remainingPercent: remainingPercent,
+                    thresholds: thresholds
+                )
             )
         }
     }
@@ -81,7 +90,7 @@ struct DesktopWidgetView: View {
         let color = Color(hex: state.descriptor.accentColorHex)
         let resolved = SnapshotResolver.resolve(state)
         let error = state.snapshot?.providerError ?? state.snapshot?.usageError
-        let items = windows(for: resolved.snapshot)
+        let items = windows(for: resolved.snapshot, thresholds: viewModel.severityThresholds)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Circle().fill(color).frame(width: 7, height: 7)
@@ -141,8 +150,16 @@ struct DesktopWidgetView: View {
                     .lineLimit(1)
             }
             ProgressView(value: window.remainingPercent, total: 100)
-                .tint(color)
+                .tint(barColor(window.severity, accent: color))
                 .scaleEffect(x: 1, y: 0.6, anchor: .center)
+        }
+    }
+
+    private func barColor(_ severity: Severity, accent: Color) -> Color {
+        switch severity {
+        case .normal: return accent
+        case .warning: return .orange
+        case .critical: return .red
         }
     }
 }
