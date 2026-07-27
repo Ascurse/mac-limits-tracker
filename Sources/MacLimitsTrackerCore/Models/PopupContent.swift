@@ -48,6 +48,39 @@ public enum Severity: Equatable, Sendable {
         if remainingPercent <= thresholds.warningRemaining { return .warning }
         return .normal
     }
+
+    public static func worst(
+        in states: [ProviderState],
+        thresholds: SeverityThresholds = .standard
+    ) -> Severity {
+        var worst: Severity = .normal
+        for state in states {
+            let resolved = SnapshotResolver.resolve(state)
+            guard let snapshot = resolved.snapshot,
+                  (resolved.isStale || SnapshotResolver.isGood(snapshot)),
+                  let windows = snapshot.windows else { continue }
+            for window in windows {
+                guard let usedPercent = window.usedPercent else { continue }
+                let severity = from(
+                    remainingPercent: max(0, 100 - usedPercent),
+                    thresholds: thresholds
+                )
+                if isMoreSevere(severity, than: worst) {
+                    worst = severity
+                }
+            }
+        }
+        return worst
+    }
+
+    private static func isMoreSevere(_ lhs: Severity, than rhs: Severity) -> Bool {
+        switch (lhs, rhs) {
+        case (.critical, .normal), (.critical, .warning), (.warning, .normal):
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Одно окно лимита, готовое к показу.

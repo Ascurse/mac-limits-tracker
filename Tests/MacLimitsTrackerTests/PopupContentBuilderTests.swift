@@ -26,6 +26,69 @@ final class SeverityTests: XCTestCase {
     }
 }
 
+final class SeverityWorstTests: XCTestCase {
+    private func state(
+        descriptor: ProviderDescriptor = claudeDescriptor,
+        windows: [SnapshotWindow]?,
+        lastGoodWindows: [SnapshotWindow]? = nil,
+        providerError: String? = nil
+    ) -> ProviderState {
+        let snapshot = LimitsSnapshot(
+            loggedIn: true, plan: nil, windows: windows,
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: providerError, fetchedAt: Date(timeIntervalSince1970: 1)
+        )
+        let lastGood = lastGoodWindows.map {
+            LimitsSnapshot(
+                loggedIn: true, plan: nil, windows: $0,
+                creditsBalance: nil, rateLimitReachedType: nil, details: [],
+                daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+                providerError: nil, fetchedAt: Date(timeIntervalSince1970: 0)
+            )
+        }
+        return ProviderState(descriptor: descriptor, snapshot: snapshot, lastGoodSnapshot: lastGood)
+    }
+
+    func test_worstUsesConfiguredThresholdsAcrossResolvedStates() {
+        let thresholds = SeverityThresholds(warningRemaining: 60, criticalRemaining: 20)
+        let normal = state(windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 30, resetsAt: nil)])
+        let warning = state(descriptor: codexDescriptor,
+                            windows: [SnapshotWindow(windowDurationMins: 10080, usedPercent: 50, resetsAt: nil)])
+        let critical = state(windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 90, resetsAt: nil)])
+
+        XCTAssertEqual(Severity.worst(in: [normal], thresholds: thresholds), .normal)
+        XCTAssertEqual(Severity.worst(in: [warning], thresholds: thresholds), .warning)
+        XCTAssertEqual(Severity.worst(in: [normal, warning, critical], thresholds: thresholds), .critical)
+    }
+
+    func test_worstUsesLastGoodWindowsForStaleState() {
+        let stale = state(
+            windows: nil,
+            lastGoodWindows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 90, resetsAt: nil)],
+            providerError: "offline"
+        )
+
+        XCTAssertEqual(Severity.worst(in: [stale]), .critical)
+    }
+
+    func test_worstIgnoresProviderErrorWithoutLastGood() {
+        let failed = state(
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 99, resetsAt: nil)],
+            providerError: "offline"
+        )
+
+        XCTAssertEqual(Severity.worst(in: [failed]), .normal)
+    }
+
+    func test_worstReturnsNormalWhenNoWindowHasData() {
+        let empty = state(windows: [])
+        let unavailable = state(windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: nil, resetsAt: nil)])
+
+        XCTAssertEqual(Severity.worst(in: [empty, unavailable]), .normal)
+    }
+}
+
 final class SeverityThresholdsTests: XCTestCase {
     /// Инвариант: critical строго ниже warning, иначе зона warning недостижима.
     func test_init_clampsCriticalBelowWarning() {
