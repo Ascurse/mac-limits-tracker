@@ -38,6 +38,7 @@ struct MacLimitsTrackerApp: App {
                     }
                 }
             }
+            .foregroundStyle(menuBarTint)
             .help(viewModel.statusTooltip)
             .task {
                 viewModel.start()
@@ -46,9 +47,21 @@ struct MacLimitsTrackerApp: App {
         }
         .menuBarExtraStyle(.window)
     }
+
+    private var menuBarTint: Color {
+        switch viewModel.statusSeverity {
+        case .normal: return .primary
+        case .warning: return .orange
+        case .critical: return .red
+        }
+    }
 }
 
 extension LimitsViewModel {
+    var statusSeverity: Severity {
+        Severity.worst(in: states, thresholds: severityThresholds)
+    }
+
     var statusIcon: String {
         if isRefreshing { return "arrow.triangle.2.circlepath" }
         if states.contains(where: { $0.snapshot?.providerError != nil }) {
