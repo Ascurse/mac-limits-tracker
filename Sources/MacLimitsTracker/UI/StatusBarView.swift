@@ -2,13 +2,16 @@ import SwiftUI
 import MacLimitsTrackerCore
 
 /// Корень попапа статус-бара. Публичная точка входа для App.
-/// Верхняя строка — действие "Open in Window" (bd mac-limits-tracker-3ip.4):
-/// из menu bar можно открыть singleton desktop window; закрытие окна
-/// не закрывает приложение, активация процесса управляется контроллером.
+/// Верхняя строка — bridge к desktop-поверхностям (bd mac-limits-tracker-3ip.6):
+/// "Open Limits Tracker" открывает singleton desktop window (3ip.4),
+/// "Settings…" открывает нативную Settings scene (3ip.5) через `openSettings`.
+/// Закрытие окон не закрывает приложение, активация процесса управляется
+/// WindowPresentationController; состояние остаётся в общей LimitsViewModel.
 public struct StatusBarView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let launchAtLogin: LaunchAtLoginManager
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     init(viewModel: LimitsViewModel, launchAtLogin: LaunchAtLoginManager) {
         self.viewModel = viewModel
@@ -40,13 +43,23 @@ public struct StatusBarView: View {
             Button {
                 openWindow(id: "main")
             } label: {
-                Label("Open in Window", systemImage: "macwindow")
+                Label("Open Limits Tracker", systemImage: "macwindow")
                     .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
             .help("Open Limits Tracker in a regular window (Dock, Cmd-Tab, Window menu)")
             .accessibilityLabel("Open Limits Tracker in Window")
+            Button {
+                openSettings()
+            } label: {
+                Label("Settings…", systemImage: "gearshape")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Open Settings (Cmd-,)")
+            .accessibilityLabel("Open Settings")
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
