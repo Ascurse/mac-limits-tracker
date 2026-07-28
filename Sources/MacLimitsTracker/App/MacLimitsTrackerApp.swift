@@ -75,6 +75,16 @@ struct MacLimitsTrackerApp: App {
         .commands {
             OpenLimitsTrackerCommand()
         }
+
+        // Нативное окно Settings (Cmd-,): композиция тех же 4 общих секций
+        // с поверхностью `.desktop` (bd mac-limits-tracker-3ip.5). Окно идёт
+        // через тот же WindowPresentationController — политика остаётся
+        // .regular, пока открыто хотя бы одно окно.
+        Settings {
+            SettingsRootView(viewModel: viewModel, launchAtLogin: launchAtLoginManager)
+                .onAppear { windowPresentationController.setSettingsWindowPresented(true) }
+                .onDisappear { windowPresentationController.setSettingsWindowPresented(false) }
+        }
     }
 
     private var menuBarTint: Color {
