@@ -236,36 +236,20 @@ public struct KimiLimitsProvider: @unchecked Sendable {
     func fetchStatus() async -> KimiStatus {
         let now = Date()
         do {
-            let data = try await fileReader(credentialsURL)
-            let creds = try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+            let creds = try await readCredentials()
             guard !creds.refreshToken.isEmpty else {
                 return KimiStatus(loggedIn: false, plan: nil, usage: nil, usageError: nil,
                                   providerError: "kimi-code refresh token missing", fetchedAt: now)
             }
-            let jwtPlan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
-            let expiredMessage = "Kimi login expired — open Kimi Code to refresh"
+
             let activeCreds: KimiCredentialsFile
-            if let expiresAt = creds.expiresAt, expiresAt <= now.timeIntervalSince1970 {
-                do {
-                    activeCreds = try await refresh(creds)
-                } catch let refreshError as KimiTokenRefreshError {
-                    switch refreshError {
-                    case .loginExpired:
-                        return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
-                                          usageError: expiredMessage, providerError: nil, fetchedAt: now)
-                    case .refreshFailed(let msg):
-                        return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
-                                          usageError: "Kimi token refresh failed: \(msg)",
-                                          providerError: nil, fetchedAt: now)
-                    }
-                } catch {
-                    return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
-                                      usageError: "Kimi token refresh failed: \(friendly(error))",
-                                      providerError: nil, fetchedAt: now)
-                }
-            } else {
-                activeCreds = creds
+            do {
+                activeCreds = try await refreshIfNeeded(creds, now: now)
+            } catch {
+                let jwtPlan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
+                return mapRefreshError(error, jwtPlan: jwtPlan, now: now)
             }
+
             let refreshedJwtPlan = KimiJwtPayloadParser.planClaim(fromToken: activeCreds.accessToken)
             let (usage, membershipLevel, usageError) = await fetchUsage(creds: activeCreds)
             let plan = membershipLevel.flatMap(KimiMembershipLevelFormatter.prettify) ?? refreshedJwtPlan
@@ -278,6 +262,36 @@ public struct KimiLimitsProvider: @unchecked Sendable {
                 fetchedAt: now
             )
         }
+    }
+
+    private func readCredentials() async throws -> KimiCredentialsFile {
+        let data = try await fileReader(credentialsURL)
+        return try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+    }
+
+    private func refreshIfNeeded(_ creds: KimiCredentialsFile, now: Date) async throws -> KimiCredentialsFile {
+        if let expiresAt = creds.expiresAt, expiresAt <= now.timeIntervalSince1970 {
+            return try await refresh(creds)
+        }
+        return creds
+    }
+
+    private func mapRefreshError(_ error: Error, jwtPlan: String?, now: Date) -> KimiStatus {
+        if let refreshError = error as? KimiTokenRefreshError {
+            switch refreshError {
+            case .loginExpired:
+                return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
+                                  usageError: "Kimi login expired — open Kimi Code to refresh",
+                                  providerError: nil, fetchedAt: now)
+            case .refreshFailed(let msg):
+                return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
+                                  usageError: "Kimi token refresh failed: \(msg)",
+                                  providerError: nil, fetchedAt: now)
+            }
+        }
+        return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
+                          usageError: "Kimi token refresh failed: \(friendly(error))",
+                          providerError: nil, fetchedAt: now)
     }
 
     /// Делает запрос `/coding/v1/usages` и, если сервер отвечает 401, один раз пытается
