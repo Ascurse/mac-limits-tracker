@@ -17,6 +17,12 @@ public final class HistoryStore {
     private let fileURL: URL
     private var samples: [UsageSample]
 
+    private struct IndexKey: Hashable {
+        let providerId: String
+        let windowMins: Int
+    }
+    private var lastIndexByKey: [IndexKey: Int] = [:]
+
     public init(
         directory: URL = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -28,6 +34,15 @@ public final class HistoryStore {
         self.directory = directory
         self.fileURL = directory.appendingPathComponent(Self.fileName)
         self.samples = Self.load(from: fileURL)
+        rebuildIndices()
+    }
+
+    private func rebuildIndices() {
+        lastIndexByKey.removeAll(keepingCapacity: true)
+        for (index, sample) in samples.enumerated() {
+            let key = IndexKey(providerId: sample.providerId, windowMins: sample.windowMins)
+            lastIndexByKey[key] = index
+        }
     }
 
     public func append(
@@ -45,20 +60,23 @@ public final class HistoryStore {
             resetsAt: resetsAt
         )
 
-        // Дедуп ищет последнюю точку именно этого (providerId, windowMins):
-        // append'ы разных окон/провайдеров чередуются внутри одного refresh.
-        if let lastIndex = samples.lastIndex(where: {
-            $0.providerId == newSample.providerId && $0.windowMins == newSample.windowMins
-        }),
+        let key = IndexKey(providerId: newSample.providerId, windowMins: newSample.windowMins)
+
+        if let lastIndex = lastIndexByKey[key],
             samples[lastIndex].usedPercent == newSample.usedPercent,
             samples[lastIndex].resetsAt == newSample.resetsAt {
             samples[lastIndex].fetchedAt = newSample.fetchedAt
         } else {
             samples.append(newSample)
+            lastIndexByKey[key] = samples.count - 1
         }
 
         let cutoff = newSample.fetchedAt.addingTimeInterval(-Self.retentionDays * 24 * 3600)
+        let oldCount = samples.count
         samples.removeAll { $0.fetchedAt < cutoff }
+        if samples.count != oldCount {
+            rebuildIndices()
+        }
 
         persist()
     }
