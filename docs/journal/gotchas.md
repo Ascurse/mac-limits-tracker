@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-28 — Свежий ad-hoc `.app` вызывает keychain ACL-диалог «Claude Code-credentials» при первом refresh (bd mac-limits-tracker-3ip.7)
+
+**Симптом:** при первом запуске собранного `dist/MacLimitsTracker.app` и нажатии «Refresh» macOS показывает системный диалог с просьбой разрешить доступ к записи Keychain `Claude Code-credentials`; без подтверждения Claude-провайдер не может достать токен.
+**Причина:** ad-hoc-подпись меняется при каждой пересборке, и keychain ACL не узнаёт новый бинарь. То же самое уже задокументировано для `VerifyCli` (2026-07-24), но касается и готового `.app`.
+**Обход:** в smoke-тесте нажать «Always Allow» один раз на свежем билде — правило сохраняется для данной подписи до следующей чистой пересборки. Проверять, что после разрешения refresh отработал и popup показывает live-данные.
+**Где это в коде:** [make-app.sh](../../make-app.sh) (ad-hoc bundle), чтение keychain — `ClaudeKeychainCredentialsParser` в [Sources/MacLimitsTrackerCore/Models/ClaudeModels.swift](../../Sources/MacLimitsTrackerCore/Models/ClaudeModels.swift).
+
 ## 2026-07-28 — `UserDefaults.bool(forKey:)` молча возвращает `false` для отсутствующего ключа (bd mac-limits-tracker-3ip.3)
 
 **Симптом:** новый `AppSettingsStore.autoRefreshEnabled` читается как `false` после первого запуска (когда ключа ещё нет в defaults), тоггл «Auto-refresh» в UI показывает выключенное состояние, хотя по дизайну default = `true`.

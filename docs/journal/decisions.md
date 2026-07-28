@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-28 — Bundled `.app` — persistent `.regular` activation, `swift run` — hybrid `.accessory` (bd mac-limits-tracker-3ip.7)
+
+**Контекст:** 3ip.4 перевёл активацию полностью в runtime, но `.app` по-прежнему запускался как menu-bar-only (`.accessory`) — Dock-иконки и Cmd-Tab не было, хотя приложение уже умеет singleton desktop window и в будущем получит отдельную Settings-сцену. `swift run` без бандла должен остаться menu-bar-first, иначе dev-режим захламляет Dock.
+**Решение:** `WindowPresentationController` обзавёлся `LaunchMode { hybrid, persistentRegular }` (init-параметр, default `.hybrid`). `applyLaunchPolicy()` заменила `ensureAccessoryOnLaunch()`: в `.hybrid` стартовая политика — `.accessory`, в `.persistentRegular` — `.regular`. Демоушен в `.accessory` при закрытии окна выполняется только в `.hybrid`. `MacLimitsTrackerApp.init` выбирает режим по `Bundle.main.bundleIdentifier != nil` — уже третье использование этого паттерна (см. `NotificationManager`, `LaunchAtLoginManager`).
+**Почему:** один контроллер сохраняет единый источник истины для политики; разделение по наличию бандла — надёжный runtime-фильтр без новых build-time флагов. `LSUIElement` остаётся исключённым из Info.plist (ADR 3ip.4), бандл получает Dock-иконку и Cmd-Tab честно.
+**Последствия:** `make-app.sh` теперь копирует `AppIcon.icns` и прописывает `CFBundleIconFile`; `README` больше не утверждает, что бандл `LSUIElement=true`. Settings-сцена (3ip.5) будет композироваться с той же логикой: окна дёргают `setMainWindowPresented`, а режим запуска решает, оставаться ли в `.regular`.
+
 ## 2026-07-28 — Общие настройки popup/desktop/Settings: typed store + shared sections (bd mac-limits-tracker-3ip.3)
 
 **Контекст:** `@AppStorage` для `appTheme`/`menuBarDisplayMode`/`showDesktopWidget`/`autoRefresh` жил прямо во View (`PopupFooter` × 3, `StatusBarView`, `DesktopWindowView`, `MacLimitsTrackerApp`) — нарушение дизайна «не читать UserDefaults из View» и причина планируемого 3ip.5 Settings scene: общих rows не было, любая поверхность дублировала бы тоглы. `LaunchAtLoginManager` создавался в `@StateObject` самого `PopupFooter` — Settings scene не смог бы переиспользовать тот же инстанс, два параллельных SMAppService-контроллера дрались бы за статус.
