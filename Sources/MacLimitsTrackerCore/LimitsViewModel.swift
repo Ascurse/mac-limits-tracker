@@ -114,23 +114,27 @@ public final class LimitsViewModel: ObservableObject {
                     if let lastGood { self.lastGoodSnapshots[provider.descriptor.id] = lastGood }
                     return ProviderState(descriptor: provider.descriptor, snapshot: snapshot, lastGoodSnapshot: lastGood)
                 }
-                for (provider, snapshot) in zip(providers, snapshots) {
-                    guard snapshot.providerError == nil,
-                          snapshot.usageError == nil,
-                          let windows = snapshot.windows else { continue }
-                    for window in windows {
-                        guard let windowMins = window.windowDurationMins,
-                              let usedPercent = window.usedPercent else { continue }
-                        self.historyStore.append(
-                            providerId: provider.descriptor.id,
-                            windowMins: windowMins,
-                            fetchedAt: snapshot.fetchedAt,
-                            usedPercent: usedPercent,
-                            resetsAt: window.resetsAt
-                        )
-                    }
-                }
+                self.recordHistory(providers: providers, snapshots: snapshots)
                 self.isRefreshing = false
+            }
+        }
+    }
+
+    private func recordHistory(providers: [any LimitsProvider], snapshots: [LimitsSnapshot]) {
+        for (provider, snapshot) in zip(providers, snapshots) {
+            guard snapshot.providerError == nil,
+                  snapshot.usageError == nil,
+                  let windows = snapshot.windows else { continue }
+            for window in windows {
+                guard let windowMins = window.windowDurationMins,
+                      let usedPercent = window.usedPercent else { continue }
+                self.historyStore.append(
+                    providerId: provider.descriptor.id,
+                    windowMins: windowMins,
+                    fetchedAt: snapshot.fetchedAt,
+                    usedPercent: usedPercent,
+                    resetsAt: window.resetsAt
+                )
             }
         }
     }
