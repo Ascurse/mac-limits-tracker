@@ -76,6 +76,67 @@ final class AppSettingsStoreTests: XCTestCase {
         AppSettingsStore(defaults: defaults).notificationsEnabled = true
         XCTAssertTrue(AppSettingsStore(defaults: defaults).notificationsEnabled)
     }
+
+    // MARK: - AppTheme
+
+    func test_noSavedValue_appThemeDefaultsToSystem() {
+        let store = AppSettingsStore(defaults: defaults)
+        XCTAssertEqual(store.appTheme, .system)
+    }
+
+    func test_appTheme_roundTripsAcrossStoreInstances() {
+        AppSettingsStore(defaults: defaults).appTheme = .terminal
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).appTheme, .terminal)
+    }
+
+    func test_unknownSavedRawValue_appThemeFallsBackToSystem() {
+        defaults.set("quantum", forKey: "appTheme")
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).appTheme, .system)
+    }
+
+    // MARK: - MenuBarDisplayMode
+
+    func test_noSavedValue_menuBarDisplayModeDefaultsToIconAndText() {
+        let store = AppSettingsStore(defaults: defaults)
+        XCTAssertEqual(store.menuBarDisplayMode, .iconAndText)
+    }
+
+    func test_menuBarDisplayMode_roundTripsAcrossStoreInstances() {
+        AppSettingsStore(defaults: defaults).menuBarDisplayMode = .iconOnly
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).menuBarDisplayMode, .iconOnly)
+    }
+
+    func test_unknownSavedRawValue_menuBarDisplayModeFallsBackToDefault() {
+        defaults.set("holographic", forKey: "menuBarDisplayMode")
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).menuBarDisplayMode, .iconAndText)
+    }
+
+    // MARK: - ShowDesktopWidget
+
+    func test_noSavedValue_showDesktopWidgetDefaultsToFalse() {
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).showDesktopWidget)
+    }
+
+    func test_showDesktopWidget_roundTrips() {
+        AppSettingsStore(defaults: defaults).showDesktopWidget = true
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showDesktopWidget)
+    }
+
+    // MARK: - AutoRefreshEnabled
+
+    func test_noSavedValue_autoRefreshEnabledDefaultsToTrue() {
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).autoRefreshEnabled)
+    }
+
+    func test_autoRefreshEnabled_roundTrips() {
+        AppSettingsStore(defaults: defaults).autoRefreshEnabled = false
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).autoRefreshEnabled)
+    }
+
+    func test_storedFalseAutoRefreshEnabled_doesNotFallBackToTrue() {
+        defaults.set(false, forKey: "autoRefreshEnabled")
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).autoRefreshEnabled)
+    }
 }
 
 /// LimitsViewModel + AppSettingsStore: интервал читается из настроек и
@@ -187,5 +248,156 @@ final class LimitsViewModelSeverityThresholdsTests: XCTestCase {
         makeVM().setSeverityThresholds(SeverityThresholds(warningRemaining: 50, criticalRemaining: 10))
         XCTAssertEqual(makeVM().severityThresholds,
                        SeverityThresholds(warningRemaining: 50, criticalRemaining: 10))
+    }
+}
+
+/// Счётчик количества вызовов fetch(). NSLock — читается синхронно из
+/// MainActor-замыканий waitUntil, пишется из fetch-задач на global executor.
+private final class _FetchCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return _value }
+    func increment() { lock.lock(); defer { lock.unlock() }; _value += 1 }
+}
+
+/// Провайдер, чей fetch() инкрементирует счётчик.
+private struct _CountingProvider: LimitsProvider {
+    let descriptor: ProviderDescriptor
+    let counter: _FetchCounter
+    let snapshot: LimitsSnapshot = StubProvider.emptySnapshot
+
+    init(id: String, counter: _FetchCounter) {
+        descriptor = ProviderDescriptor(id: id, displayName: id, shortName: id,
+                                        menuBarSymbol: String(id.prefix(1)).uppercased(),
+                                        accentColorHex: 0, loginHelp: nil)
+        self.counter = counter
+    }
+
+    func fetch() async -> LimitsSnapshot {
+        counter.increment()
+        return snapshot
+    }
+}
+
+/// LimitsViewModel + display-сеттинги: appTheme, menuBarDisplayMode,
+/// showDesktopWidget проекции на AppSettingsStore; autoRefresh мигрирован
+/// на store-бэкенд.
+@MainActor
+final class LimitsViewModelDisplaySettingsTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suiteName = "LimitsViewModelDisplaySettingsTests"
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
+        super.tearDown()
+    }
+
+    private func makeVM() -> LimitsViewModel {
+        LimitsViewModel(
+            providers: [StubProvider(id: "claude")],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            appSettingsStore: AppSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+    }
+
+    // MARK: - appTheme
+
+    func test_noSavedTheme_viewModelDefaultsToSystem() {
+        XCTAssertEqual(makeVM().appTheme, .system)
+    }
+
+    func test_savedTheme_isLoadedOnInit() {
+        AppSettingsStore(defaults: defaults).appTheme = .terminal
+        XCTAssertEqual(makeVM().appTheme, .terminal)
+    }
+
+    func test_setAppTheme_updatesPublishedValue() {
+        let vm = makeVM()
+        vm.setAppTheme(.phosphor)
+        XCTAssertEqual(vm.appTheme, .phosphor)
+    }
+
+    func test_setAppTheme_persistsAcrossViewModelInstances() {
+        makeVM().setAppTheme(.tui)
+        XCTAssertEqual(makeVM().appTheme, .tui)
+    }
+
+    // MARK: - menuBarDisplayMode
+
+    func test_savedMenuBarDisplayMode_isLoadedOnInit() {
+        AppSettingsStore(defaults: defaults).menuBarDisplayMode = .iconOnly
+        XCTAssertEqual(makeVM().menuBarDisplayMode, .iconOnly)
+    }
+
+    func test_setMenuBarDisplayMode_persistsAcrossViewModelInstances() {
+        makeVM().setMenuBarDisplayMode(.iconOnly)
+        XCTAssertEqual(makeVM().menuBarDisplayMode, .iconOnly)
+    }
+
+    // MARK: - showDesktopWidget
+
+    func test_savedShowDesktopWidget_isLoadedOnInit() {
+        AppSettingsStore(defaults: defaults).showDesktopWidget = true
+        XCTAssertTrue(makeVM().showDesktopWidget)
+    }
+
+    func test_setShowDesktopWidget_persistsAcrossViewModelInstances() {
+        makeVM().setShowDesktopWidget(true)
+        XCTAssertTrue(makeVM().showDesktopWidget)
+    }
+
+    // MARK: - autoRefresh
+
+    func test_noSavedAutoRefresh_defaultsToTrue() {
+        XCTAssertTrue(makeVM().autoRefresh)
+    }
+
+    func test_savedAutoRefreshDisabled_isLoadedOnInit() {
+        AppSettingsStore(defaults: defaults).autoRefreshEnabled = false
+        XCTAssertFalse(makeVM().autoRefresh)
+    }
+
+    func test_setAutoRefresh_persistsAcrossViewModelInstances() {
+        makeVM().setAutoRefresh(false)
+        XCTAssertFalse(makeVM().autoRefresh)
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).autoRefreshEnabled)
+    }
+
+    /// PIN: persistence в setAutoRefresh не должен ломать остановку таймера.
+    func test_setAutoRefreshFalse_stillStopsTimer() {
+        let counter = _FetchCounter()
+        let vm = LimitsViewModel(
+            providers: [_CountingProvider(id: "test", counter: counter)],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            appSettingsStore: AppSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+        vm.start()
+        vm.setAutoRefresh(false)
+        XCTAssertFalse(vm.autoRefresh)
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).autoRefreshEnabled)
+        vm.startTimer()
+        let exp = XCTestExpectation()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1)
+        XCTAssertEqual(counter.value, 1,
+                       "setAutoRefresh(false) должен остановить таймер; дополнительный refresh не ожидается")
     }
 }

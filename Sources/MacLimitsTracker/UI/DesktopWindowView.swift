@@ -10,7 +10,8 @@ import MacLimitsTrackerCore
 /// если menu bar popup ещё не показывался.
 struct DesktopWindowView: View {
     @ObservedObject var viewModel: LimitsViewModel
-    @AppStorage("appTheme") private var theme: AppTheme = .system
+    let launchAtLogin: LaunchAtLoginManager
+    @State private var settingsExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -20,9 +21,20 @@ struct DesktopWindowView: View {
                     viewModel.states,
                     history: viewModel.historySamples(providerId:),
                     thresholds: viewModel.severityThresholds),
-                theme: theme,
+                theme: viewModel.appTheme,
                 surface: .desktop)
             Spacer(minLength: 0)
+            Divider()
+            DisclosureGroup("Settings", isExpanded: $settingsExpanded) {
+                VStack(alignment: .leading, spacing: 12) {
+                    DisplaySettingsSection(viewModel: viewModel, surface: .desktop)
+                    RefreshSettingsSection(viewModel: viewModel, surface: .desktop)
+                    ProvidersSettingsSection(viewModel: viewModel, surface: .desktop)
+                    SystemSettingsSection(viewModel: viewModel, launchAtLogin: launchAtLogin, surface: .desktop)
+                }
+                .padding(.top, 4)
+            }
+            .accessibilityHint("Expand to edit shared settings")
         }
         .padding(20)
         .frame(minWidth: 420, idealWidth: 520, minHeight: 320, idealHeight: 480)

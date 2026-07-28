@@ -4,7 +4,7 @@ import MacLimitsTrackerCore
 /// Тема Phosphor: монохромный зелёный CRT.
 struct PhosphorStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
-    let desktopWidgetController: DesktopWidgetController
+    let launchAtLogin: LaunchAtLoginManager
 
     private let mono = Font.system(size: 11, design: .monospaced)
 
@@ -19,7 +19,7 @@ struct PhosphorStatusView: View {
                 theme: .phosphor,
                 surface: .menuBar)
             promptLine
-            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 .tint(PhosphorPalette.mid)
         }
         .font(mono)

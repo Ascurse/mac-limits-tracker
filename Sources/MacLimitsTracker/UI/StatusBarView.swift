@@ -7,28 +7,27 @@ import MacLimitsTrackerCore
 /// не закрывает приложение, активация процесса управляется контроллером.
 public struct StatusBarView: View {
     @ObservedObject var viewModel: LimitsViewModel
-    let desktopWidgetController: DesktopWidgetController
+    let launchAtLogin: LaunchAtLoginManager
     @Environment(\.openWindow) private var openWindow
-    @AppStorage("appTheme") private var theme: AppTheme = .system
 
-    init(viewModel: LimitsViewModel, desktopWidgetController: DesktopWidgetController) {
+    init(viewModel: LimitsViewModel, launchAtLogin: LaunchAtLoginManager) {
         self.viewModel = viewModel
-        self.desktopWidgetController = desktopWidgetController
+        self.launchAtLogin = launchAtLogin
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             topBar
             Group {
-                switch theme {
+                switch viewModel.appTheme {
                 case .system:
-                    SystemStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+                    SystemStatusView(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 case .terminal:
-                    TerminalStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+                    TerminalStatusView(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 case .phosphor:
-                    PhosphorStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+                    PhosphorStatusView(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 case .tui:
-                    TUIStatusView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+                    TUIStatusView(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 }
             }
         }

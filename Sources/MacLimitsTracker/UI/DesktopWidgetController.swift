@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import MacLimitsTrackerCore
 
@@ -7,6 +8,7 @@ import MacLimitsTrackerCore
 final class DesktopWidgetController {
     private var panel: NSPanel?
     private let viewModel: LimitsViewModel
+    private var cancellables: Set<AnyCancellable> = []
 
     private static let autosaveName = NSWindow.FrameAutosaveName("DesktopWidget")
 
@@ -14,6 +16,14 @@ final class DesktopWidgetController {
 
     init(viewModel: LimitsViewModel) {
         self.viewModel = viewModel
+
+        // Начальное состояние применяет App (.task) — подписка с dropFirst()
+        // реагирует только на последующие изменения из любой поверхности.
+        viewModel.$showDesktopWidget
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.setVisible($0) }
+            .store(in: &cancellables)
     }
 
     func show() {

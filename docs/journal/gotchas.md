@@ -21,6 +21,20 @@
 
 ---
 
+## 2026-07-28 — `UserDefaults.bool(forKey:)` молча возвращает `false` для отсутствующего ключа (bd mac-limits-tracker-3ip.3)
+
+**Симптом:** новый `AppSettingsStore.autoRefreshEnabled` читается как `false` после первого запуска (когда ключа ещё нет в defaults), тоггл «Auto-refresh» в UI показывает выключенное состояние, хотя по дизайну default = `true`.
+**Причина:** `defaults.bool(forKey:)` для отсутствующего ключа возвращает `false` — отличить «не записано» от «записано false» через этот API нельзя. Для `notificationsEnabled` (default false) это незаметно; для `autoRefreshEnabled` (default true) — ломает контракт.
+**Обход:** для bool-ключей с default `true` использовать `defaults.object(forKey:) as? Bool ?? true` — `object(forKey:)` возвращает `nil` для отсутствующего ключа, что позволяет применить default; для `false`-default ключей по-прежнему достаточно `bool(forKey:)`. Тот же приём уже применён в этом же файле для `severityThresholds` (для `Double`).
+**Где это в коде:** [Sources/MacLimitsTrackerCore/Providers/AppSettingsStore.swift](../../Sources/MacLimitsTrackerCore/Providers/AppSettingsStore.swift) (`autoRefreshEnabled` getter с object-forKey; рядом `severityThresholds` для справки).
+
+## 2026-07-28 — `@Published`-подписка в `init` срабатывает раньше, чем `App.task` (bd mac-limits-tracker-3ip.3)
+
+**Симптом:** `DesktopWidgetController` после миграции на `vm.$showDesktopWidget.sink { setVisible($0) }` показывал NSPanel во время `MacLimitsTrackerApp.init` (до того, как `AppDelegate.applicationDidFinishLaunching` мог что-либо применить), либо применял состояние дважды — `sink` от первого `$showDesktopWidget` replay + явный `App.task` setVisible.
+**Причина:** `@Published` через `Publisher` эмитит текущее значение новому подписчику немедленно (в `init`-объекта, если sink создан в init). `App.init` отрабатывает до того, как NSApp готов, и до того, как пользовательский flow допускает показ панели.
+**Обход:** подписка с `.dropFirst()` — пропускает initial replay, реагирует только на последующие изменения из любой поверхности. Начальное состояние по-прежнему применяет `App.task` (`desktopWidgetController.setVisible(viewModel.showDesktopWidget)`), чтобы тайминг показа был управляемым (после старта сцены, а не во время init).
+**Где это в коде:** [Sources/MacLimitsTracker/UI/DesktopWidgetController.swift](../../Sources/MacLimitsTracker/UI/DesktopWidgetController.swift) (init, `.dropFirst()` + `cancellables`), [Sources/MacLimitsTracker/App/MacLimitsTrackerApp.swift](../../Sources/MacLimitsTracker/App/MacLimitsTrackerApp.swift) (label `.task` — начальное применение).
+
 ## 2026-07-28 — `NSApp` is nil в `MacLimitsTrackerApp.init` (bd mac-limits-tracker-3ip.4)
 
 **Симптом:** свежесобранный бандл крашится на старте с `Swift runtime failure: Unexpectedly found nil while implicitly unwrapping an Optional value` в `MacLimitsTrackerApp.init` → `WindowPresentationController.ensureAccessoryOnLaunch()` → `NSApp.setActivationPolicy(.accessory)`. Падение видно в `~/Library/Logs/DiagnosticReports/MacLimitsTracker-*.ips`, в `lldb --batch` — `frame #1: closure #1 in MacLimitsTrackerApp.init`.

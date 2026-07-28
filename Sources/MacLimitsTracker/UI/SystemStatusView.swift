@@ -4,7 +4,7 @@ import MacLimitsTrackerCore
 /// Системная тема: текущий нативный вид попапа.
 struct SystemStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
-    let desktopWidgetController: DesktopWidgetController
+    let launchAtLogin: LaunchAtLoginManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -17,7 +17,7 @@ struct SystemStatusView: View {
                 theme: .system,
                 surface: .menuBar)
             Divider()
-            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)
         }
         .padding(16)
         .frame(minWidth: 320, idealWidth: 340)
