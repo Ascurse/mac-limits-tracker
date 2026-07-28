@@ -25,6 +25,8 @@ public final class LimitsViewModel: ObservableObject {
     private let historyStore: HistoryStore
     private var refreshTask: Task<Void, Never>?
     private var timer: Timer?
+    /// Идемпотентность start(): повторные вызовы от ре-активации поверхностей — no-op.
+    private var hasStarted = false
     /// Последний успешный снапшот по id провайдера. Переживает disable/enable и
     /// исчезновение/появление dynamic-провайдера, чтобы stale-отображение не
     /// сбрасывалось при смене состава реестра.
@@ -77,6 +79,8 @@ public final class LimitsViewModel: ObservableObject {
     }
 
     public func start(_ initial: Bool = true) {
+        guard !hasStarted else { return }
+        hasStarted = true
         if initial { refresh() }
         startTimer()
     }

@@ -26,6 +26,13 @@ Lightweight ADR: архитектурные и технические решен
 **Почему:** единый источник правил уже жил в Core (`PopupContentBuilder`/`SnapshotResolver`) — вынос касался только assembly-правила и рендера; surface-параметр даёт desktop более просторную композицию без форка правил форматирования.
 **Последствия:** новые popup-подобные поверхности обязаны использовать `ProviderOverview`, а не инлайнить цикл `section(...)`; новый кейс `PopupRow` по-прежнему compile-enforced во всех 4 телах тем; desktop-плотность пока упражняется через `#Preview`, монтирование в Window — отдельная задача эпика.
 
+## 2026-07-28 — LimitsViewModel: идемпотентный start() и единственный инстанс в App (bd mac-limits-tracker-3ip.1)
+
+**Контекст:** готовился shared-источник состояния для нескольких поверхностей (будущие desktop window, Settings, MenuBarExtra, widget): `start()` не имел защиты — повторная активация (.task на label MenuBarExtra, появление новых сцен) запускала лишний refresh; плюс `MacLimitsTrackerApp` создавал выбрасываемый дефолтный `LimitsViewModel()` до настоящего в init.
+**Решение:** `start()` — полный no-op на 2+ вызове через `hasStarted`-флаг; `refresh()` cancel-replace семантика не тронута (это осознанный паттерн для явных refresh — кнопка, таймер, смена настроек). В App убран eager-дефолт у `@StateObject` — VM создаётся ровно один раз в init и передаётся в DesktopWidgetController/NotificationManager по ссылке.
+**Почему:** разбор показал, что гонки `isRefreshing` нет: флагом владеет последняя refresh-задача, superseded-задачи его не сбрасывают, cancel-without-successor недостижим вне deinit — вместо фикса добавлен pin-тест `test_refresh_supersededByNewRefresh_onlyLatestApplies_isRefreshingEndsFalse`. Полный no-op (а не «пропустить только refresh») выбран, чтобы `start(initial: false)` → `start()` не приводил к неожиданному fetch; поверхности, которым нужны свежие данные при активации, вызывают `refresh()` явно.
+**Последствия:** бид .4/.5/.6 могут свободно вызывать `start()` из любой поверхности — дубликатов refresh/timer не будет. Контракт запинен тестами `LimitsViewModelStartIdempotencyTests` (двойной start, start во время in-flight, initial-false→start). Ручной refresh и авто-таймер работают как раньше.
+
 ## 2026-07-26 — HistoryStore: первая JSON-персистентность на диске + sparkline за 24ч (bd mac-limits-tracker-08m, gh #31)
 
 **Контекст:** каждый refresh перезаписывал снапшот, история нигде не сохранялась — невозможны ни графики, ни burn-rate прогноз (gvo), ни экспорт (dti). До этого все сторы проекта жили на UserDefaults.
