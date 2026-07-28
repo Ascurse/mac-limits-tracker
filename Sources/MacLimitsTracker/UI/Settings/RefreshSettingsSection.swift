@@ -45,12 +45,7 @@ struct RefreshSettingsSection: View {
                 Picker("Warning at", selection: Binding(
                     get: { viewModel.severityThresholds.warningRemaining },
                     set: { warning in
-                        // critical не должен догонять warning: прижимаем к ближайшей
-                        // допустимой опции ниже нового warning.
-                        let maxCritical = Self.criticalOptions.filter { $0 < warning }.max() ?? warning - 1
-                        let critical = min(viewModel.severityThresholds.criticalRemaining, maxCritical)
-                        viewModel.setSeverityThresholds(SeverityThresholds(
-                            warningRemaining: warning, criticalRemaining: critical))
+                        viewModel.setWarningThreshold(warning, maxCriticalOptions: Self.criticalOptions)
                     }
                 )) {
                     ForEach(Self.warningOptions, id: \.self) { Text("\(Int($0))% left").tag($0) }

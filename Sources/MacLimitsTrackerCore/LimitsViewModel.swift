@@ -243,6 +243,13 @@ public final class LimitsViewModel: ObservableObject {
         appSettingsStore.severityThresholds = thresholds
     }
 
+    public func setWarningThreshold(_ warning: Double, maxCriticalOptions: [Double]) {
+        let maxCritical = maxCriticalOptions.filter { $0 < warning }.max() ?? warning - 1
+        let critical = min(severityThresholds.criticalRemaining, maxCritical)
+        setSeverityThresholds(SeverityThresholds(
+            warningRemaining: warning, criticalRemaining: critical))
+    }
+
     public func setNotificationsEnabled(_ enabled: Bool) {
         notificationsEnabled = enabled
         appSettingsStore.notificationsEnabled = enabled
