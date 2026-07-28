@@ -59,41 +59,43 @@ extension KimiLimitsProvider: LimitsProvider {
 /// весь остальной стек (билдер, меню-бар, виджет) работает только со снапшотом.
 extension ClaudeStatus {
     func toSnapshot() -> LimitsSnapshot {
-        let windows: [SnapshotWindow]?
-        if let usage {
-            windows = [
-                SnapshotWindow(windowDurationMins: 300,
-                               usedPercent: usage.fiveHour?.utilizationPercent,
-                               resetsAt: usage.fiveHour?.resetsAt),
-                SnapshotWindow(windowDurationMins: 10080,
-                               usedPercent: usage.sevenDay?.utilizationPercent,
-                               resetsAt: usage.sevenDay?.resetsAt)
-            ]
-        } else {
-            windows = nil
-        }
-        // Дневная статистика из stats-cache (gh #26): счётчики уже распарсены в
-        // `today`, здесь только форматируем detail-строку.
-        var details: [SnapshotDetail] = []
-        if let today {
-            details.append(SnapshotDetail(
-                key: "Today",
-                value: "\(today.messageCount) msgs · \(today.sessionCount) sessions · \(Self.abbreviated(today.tokens)) tokens"
-            ))
-        }
-        return LimitsSnapshot(
+        LimitsSnapshot(
             loggedIn: loggedIn,
             plan: subscriptionType,
-            windows: windows,
+            windows: snapshotWindows,
             creditsBalance: nil,
             rateLimitReachedType: nil,
-            details: details,
+            details: snapshotDetails,
             daysUntilRenewal: nil,
             renewalDate: nil,
             usageError: usageError,
             providerError: providerError,
             fetchedAt: fetchedAt
         )
+    }
+
+    private var snapshotWindows: [SnapshotWindow]? {
+        guard let usage else { return nil }
+        return [
+            SnapshotWindow(windowDurationMins: 300,
+                           usedPercent: usage.fiveHour?.utilizationPercent,
+                           resetsAt: usage.fiveHour?.resetsAt),
+            SnapshotWindow(windowDurationMins: 10080,
+                           usedPercent: usage.sevenDay?.utilizationPercent,
+                           resetsAt: usage.sevenDay?.resetsAt)
+        ]
+    }
+
+    // Дневная статистика из stats-cache (gh #26): счётчики уже распарсены в
+    // `today`, здесь только форматируем detail-строку.
+    private var snapshotDetails: [SnapshotDetail] {
+        guard let today else { return [] }
+        return [
+            SnapshotDetail(
+                key: "Today",
+                value: "\(today.messageCount) msgs · \(today.sessionCount) sessions · \(Self.abbreviated(today.tokens)) tokens"
+            )
+        ]
     }
 
     /// Компактная запись числа токенов: 999 / 12.3K / 1.3M, без локали
@@ -111,40 +113,42 @@ extension ClaudeStatus {
 
 extension CodexStatus {
     func toSnapshot() -> LimitsSnapshot {
-        // Приоритет: live planType из app-server над JWT-claimом (может отстать при продлении).
-        let plan = usage?.snapshot?.planType ?? planType
-
-        var windows: [SnapshotWindow]?
-        var credits: String?
-        var reached: String?
-        if let snap = usage?.snapshot {
-            let present = [snap.primary, snap.secondary].compactMap { $0 }
-            windows = present
-                .sorted { Self.windowSortKey($0) < Self.windowSortKey($1) }
-                .map { SnapshotWindow(windowDurationMins: $0.windowDurationMins,
-                                      usedPercent: $0.usedPercent, resetsAt: $0.resetsAt) }
-            credits = (snap.creditsBalance?.isEmpty == false) ? snap.creditsBalance : nil
-            reached = snap.rateLimitReachedType
-        }
-
-        var details: [SnapshotDetail] = []
-        if let authMode { details.append(SnapshotDetail(key: "Auth", value: authMode)) }
-        if let email { details.append(SnapshotDetail(key: "Account", value: email)) }
-        if let accountOwner { details.append(SnapshotDetail(key: "Org", value: accountOwner)) }
-
-        return LimitsSnapshot(
+        LimitsSnapshot(
             loggedIn: loggedIn,
-            plan: plan,
-            windows: windows,
-            creditsBalance: credits,
-            rateLimitReachedType: reached,
-            details: details,
+            // Приоритет: live planType из app-server над JWT-claimом (может отстать при продлении).
+            plan: usage?.snapshot?.planType ?? planType,
+            windows: snapshotWindows,
+            creditsBalance: snapshotCredits,
+            rateLimitReachedType: usage?.snapshot?.rateLimitReachedType,
+            details: snapshotDetails,
             daysUntilRenewal: daysUntilRenewal,
             renewalDate: subscriptionActiveUntil,
             usageError: usageError,
             providerError: providerError,
             fetchedAt: fetchedAt
         )
+    }
+
+    private var snapshotWindows: [SnapshotWindow]? {
+        guard let snap = usage?.snapshot else { return nil }
+        let present = [snap.primary, snap.secondary].compactMap { $0 }
+        return present
+            .sorted { Self.windowSortKey($0) < Self.windowSortKey($1) }
+            .map { SnapshotWindow(windowDurationMins: $0.windowDurationMins,
+                                  usedPercent: $0.usedPercent, resetsAt: $0.resetsAt) }
+    }
+
+    private var snapshotCredits: String? {
+        guard let credits = usage?.snapshot?.creditsBalance, !credits.isEmpty else { return nil }
+        return credits
+    }
+
+    private var snapshotDetails: [SnapshotDetail] {
+        var details: [SnapshotDetail] = []
+        if let authMode { details.append(SnapshotDetail(key: "Auth", value: authMode)) }
+        if let email { details.append(SnapshotDetail(key: "Account", value: email)) }
+        if let accountOwner { details.append(SnapshotDetail(key: "Org", value: accountOwner)) }
+        return details
     }
 
     /// Порядок окон: 5h первым, weekly вторым, прочие — по возрастанию длительности,
