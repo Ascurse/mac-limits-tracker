@@ -1,6 +1,6 @@
 import Foundation
 
-/// Тема попапа. rawValue персистится в @AppStorage("appTheme") — значения не менять.
+/// Тема попапа. rawValue персистится в AppSettingsStore (ключ "appTheme") — значения не менять.
 public enum AppTheme: String, CaseIterable, Identifiable {
     case system
     case terminal

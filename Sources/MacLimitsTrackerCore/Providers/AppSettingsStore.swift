@@ -1,8 +1,9 @@
 import Foundation
 
 /// Настройки приложения в UserDefaults: интервал автообновления (issue #24),
-/// пороги severity (#25), уведомления (#29). Ключи живут рядом с ключами
-/// @AppStorage (`appTheme`, `menuBarDisplayMode`) в .standard.
+/// пороги severity (#25), уведомления (#29), тема и режим меню-бара.
+/// @AppStorage убран; store владеет и этими ключами
+/// (`appTheme`, `menuBarDisplayMode`, `showDesktopWidget`).
 /// `defaults` инжектируется для тестируемости — как в ProviderSettingsStore.
 public final class AppSettingsStore {
     private let defaults: UserDefaults
@@ -10,6 +11,10 @@ public final class AppSettingsStore {
     private static let warningRemainingKey = "severityThresholds.warningRemaining"
     private static let criticalRemainingKey = "severityThresholds.criticalRemaining"
     private static let notificationsEnabledKey = "notificationsEnabled"
+    private static let appThemeKey = "appTheme"
+    private static let menuBarDisplayModeKey = "menuBarDisplayMode"
+    private static let showDesktopWidgetKey = "showDesktopWidget"
+    private static let autoRefreshEnabledKey = "autoRefreshEnabled"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -43,5 +48,35 @@ public final class AppSettingsStore {
     public var notificationsEnabled: Bool {
         get { defaults.bool(forKey: Self.notificationsEnabledKey) }
         set { defaults.set(newValue, forKey: Self.notificationsEnabledKey) }
+    }
+
+    public var appTheme: AppTheme {
+        get {
+            guard let raw = defaults.string(forKey: Self.appThemeKey),
+                  let value = AppTheme(rawValue: raw) else { return .system }
+            return value
+        }
+        set { defaults.set(newValue.rawValue, forKey: Self.appThemeKey) }
+    }
+
+    public var menuBarDisplayMode: MenuBarDisplayMode {
+        get {
+            guard let raw = defaults.string(forKey: Self.menuBarDisplayModeKey),
+                  let value = MenuBarDisplayMode(rawValue: raw) else { return .iconAndText }
+            return value
+        }
+        set { defaults.set(newValue.rawValue, forKey: Self.menuBarDisplayModeKey) }
+    }
+
+    public var showDesktopWidget: Bool {
+        get { defaults.bool(forKey: Self.showDesktopWidgetKey) }
+        set { defaults.set(newValue, forKey: Self.showDesktopWidgetKey) }
+    }
+
+    /// object(forKey:) вместо bool(forKey:): отсутствующий ключ
+    /// отличим от сохранённого false.
+    public var autoRefreshEnabled: Bool {
+        get { defaults.object(forKey: Self.autoRefreshEnabledKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.autoRefreshEnabledKey) }
     }
 }

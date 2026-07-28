@@ -4,7 +4,7 @@ import MacLimitsTrackerCore
 /// Тема Terminal: палитра Tokyo Night, тонкие полосы прогресса.
 struct TerminalStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
-    let desktopWidgetController: DesktopWidgetController
+    let launchAtLogin: LaunchAtLoginManager
 
     private let mono = Font.system(size: 11, design: .monospaced)
 
@@ -19,7 +19,7 @@ struct TerminalStatusView: View {
                 theme: .terminal,
                 surface: .menuBar)
             Rectangle().fill(TerminalPalette.track).frame(height: 1)
-            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 .tint(TerminalPalette.cyan)
         }
         .font(mono)

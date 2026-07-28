@@ -4,7 +4,7 @@ import MacLimitsTrackerCore
 /// Тема TUI: панели с рамками и датчиками в духе htop.
 struct TUIStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
-    let desktopWidgetController: DesktopWidgetController
+    let launchAtLogin: LaunchAtLoginManager
 
     private let mono = Font.system(size: 11, design: .monospaced)
 
@@ -18,7 +18,7 @@ struct TUIStatusView: View {
                     thresholds: viewModel.severityThresholds),
                 theme: .tui,
                 surface: .menuBar)
-            PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 .tint(TuiPalette.normal)
         }
         .font(mono)

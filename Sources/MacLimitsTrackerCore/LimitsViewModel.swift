@@ -10,13 +10,20 @@ public final class LimitsViewModel: ObservableObject {
     /// UI настроек читает отфильтрованную проекцию `providerSettingsWithDescriptors`.
     @Published public private(set) var providerSettings: [ProviderSetting]
     @Published public var isRefreshing = false
-    @Published public var autoRefresh = true
+    /// Автообновление — персистится в AppSettingsStore.
+    @Published public private(set) var autoRefresh: Bool
     /// Интервал автообновления — персистится в AppSettingsStore (issue #24).
     @Published public private(set) var autoRefreshInterval: RefreshInterval
     /// Пороги severity — персистятся в AppSettingsStore (issue #25).
     @Published public private(set) var severityThresholds: SeverityThresholds
     /// Уведомления о порогах и ресетах окон — персистятся в AppSettingsStore (issue #29).
     @Published public private(set) var notificationsEnabled: Bool
+    /// Тема оформления — персистится в AppSettingsStore.
+    @Published public private(set) var appTheme: AppTheme
+    /// Режим отображения в меню-баре — персистится в AppSettingsStore.
+    @Published public private(set) var menuBarDisplayMode: MenuBarDisplayMode
+    /// Показывать десктопный виджет — персистится в AppSettingsStore.
+    @Published public private(set) var showDesktopWidget: Bool
 
     private var allProviders: [any LimitsProvider]
     private let dynamicProviders: [DynamicProviderSpec]
@@ -48,9 +55,13 @@ public final class LimitsViewModel: ObservableObject {
         self.providerSettings = settings
         self.states = Self.enabledProviders(providers, settings: settings)
             .map { ProviderState(descriptor: $0.descriptor, snapshot: nil) }
+        self.autoRefresh = appSettingsStore.autoRefreshEnabled
         self.autoRefreshInterval = appSettingsStore.refreshInterval
         self.severityThresholds = appSettingsStore.severityThresholds
         self.notificationsEnabled = appSettingsStore.notificationsEnabled
+        self.appTheme = appSettingsStore.appTheme
+        self.menuBarDisplayMode = appSettingsStore.menuBarDisplayMode
+        self.showDesktopWidget = appSettingsStore.showDesktopWidget
     }
 
     /// Id, по которым ведутся настройки: реестр + id dynamic-спек, включая
@@ -193,7 +204,26 @@ public final class LimitsViewModel: ObservableObject {
 
     public func setAutoRefresh(_ value: Bool) {
         autoRefresh = value
+        appSettingsStore.autoRefreshEnabled = value
         if value { startTimer() } else { timer?.invalidate(); timer = nil }
+    }
+
+    /// Меняет тему оформления: персистит в AppSettingsStore.
+    public func setAppTheme(_ theme: AppTheme) {
+        appTheme = theme
+        appSettingsStore.appTheme = theme
+    }
+
+    /// Меняет режим отображения в меню-баре: персистит в AppSettingsStore.
+    public func setMenuBarDisplayMode(_ mode: MenuBarDisplayMode) {
+        menuBarDisplayMode = mode
+        appSettingsStore.menuBarDisplayMode = mode
+    }
+
+    /// Включает/выключает десктопный виджет: персистит в AppSettingsStore.
+    public func setShowDesktopWidget(_ show: Bool) {
+        showDesktopWidget = show
+        appSettingsStore.showDesktopWidget = show
     }
 
     /// Меняет интервал автообновления: персистит и перезапускает таймер,

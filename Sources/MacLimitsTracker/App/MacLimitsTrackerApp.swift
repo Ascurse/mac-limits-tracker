@@ -6,9 +6,8 @@ import MacLimitsTrackerCore
 struct MacLimitsTrackerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var viewModel: LimitsViewModel
-    @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
-    @AppStorage("showDesktopWidget") private var showDesktopWidget = false
     private let desktopWidgetController: DesktopWidgetController
+    private let launchAtLoginManager = LaunchAtLoginManager()
     private let notificationManager: NotificationManager
     /// Гибридная активация (bd mac-limits-tracker-3ip.4): держит процесс
     /// в `.accessory` пока singleton desktop window скрыт, и продвигает
@@ -36,12 +35,12 @@ struct MacLimitsTrackerApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            StatusBarView(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
+            StatusBarView(viewModel: viewModel, launchAtLogin: launchAtLoginManager)
         } label: {
             Group {
-                if displayMode == .iconOnly {
+                if viewModel.menuBarDisplayMode == .iconOnly {
                     Image(systemName: viewModel.statusIcon)
-                } else if let text = displayMode.menuBarText(states: viewModel.states) {
+                } else if let text = viewModel.menuBarDisplayMode.menuBarText(states: viewModel.states) {
                     HStack {
                         Image(systemName: viewModel.statusIcon)
                         Text(text).font(.caption).monospacedDigit()
@@ -57,7 +56,7 @@ struct MacLimitsTrackerApp: App {
             .help(viewModel.statusTooltip)
             .task {
                 viewModel.start()
-                desktopWidgetController.setVisible(showDesktopWidget)
+                desktopWidgetController.setVisible(viewModel.showDesktopWidget)
             }
         }
         .menuBarExtraStyle(.window)
@@ -67,7 +66,7 @@ struct MacLimitsTrackerApp: App {
         // уже существующее окно, а не создаёт копию. Закрытие не завершает
         // приложение и не очищает shared state (отдельный источник VM).
         Window("Limits Tracker", id: "main") {
-            DesktopWindowView(viewModel: viewModel)
+            DesktopWindowView(viewModel: viewModel, launchAtLogin: launchAtLoginManager)
                 .onAppear { windowPresentationController.setMainWindowPresented(true) }
                 .onDisappear { windowPresentationController.setMainWindowPresented(false) }
         }
