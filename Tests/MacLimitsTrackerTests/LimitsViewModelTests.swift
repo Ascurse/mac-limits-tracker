@@ -27,19 +27,20 @@ struct StubProvider: LimitsProvider {
 /// воспроизводится гонка refresh()-в-полёте против смены настроек.
 private actor FetchGate {
     private var isOpen: Bool
-    private var continuation: CheckedContinuation<Void, Never>?
+    private var continuations: [CheckedContinuation<Void, Never>] = []
 
     init(isOpen: Bool) { self.isOpen = isOpen }
 
     func wait() async {
         if isOpen { return }
-        await withCheckedContinuation { continuation = $0 }
+        await withCheckedContinuation { continuations.append($0) }
     }
 
     func open() {
         isOpen = true
-        continuation?.resume()
-        continuation = nil
+        let pending = continuations
+        continuations.removeAll()
+        pending.forEach { $0.resume() }
     }
 
     func close() {
@@ -646,5 +647,169 @@ final class LimitsViewModelTests: XCTestCase {
                        "stale tooltip должен показывать weekly-окно из lastGoodSnapshot")
         XCTAssertFalse(staleTooltip.contains(": ?"),
                        "stale tooltip не должен сваливаться в '?'")
+    }
+}
+
+// MARK: - start() idempotency (bd mac-limits-tracker-3ip.1)
+
+/// Счётчик количества вызовов fetch(). NSLock — читается синхронно из
+/// MainActor-замыканий waitUntil, пишется из fetch-задач на global executor.
+private final class FetchCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return _value }
+    func increment() { lock.lock(); defer { lock.unlock() }; _value += 1 }
+}
+
+/// Провайдер, чей fetch() инкрементирует счётчик и опционально ждёт на gate.
+private struct CountingProvider: LimitsProvider {
+    let descriptor: ProviderDescriptor
+    let counter: FetchCounter
+    let gate: FetchGate?
+    let snapshot: LimitsSnapshot
+
+    init(id: String, counter: FetchCounter, gate: FetchGate? = nil,
+         snapshot: LimitsSnapshot = StubProvider.emptySnapshot) {
+        descriptor = ProviderDescriptor(id: id, displayName: id, shortName: id,
+                                        menuBarSymbol: String(id.prefix(1)).uppercased(),
+                                        accentColorHex: 0, loginHelp: nil)
+        self.counter = counter
+        self.gate = gate
+        self.snapshot = snapshot
+    }
+
+    func fetch() async -> LimitsSnapshot {
+        counter.increment()
+        if let gate { await gate.wait() }
+        return snapshot
+    }
+}
+
+/// S1-P3: start() имеет контракт «запускает ровно один initial refresh» вне
+/// зависимости от количества вызовов. Эти тесты падают (RED) до добавления
+/// hasStarted-защиты и проходят после.
+@MainActor
+final class LimitsViewModelStartIdempotencyTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suiteName = "LimitsViewModelStartIdempotencyTests"
+    private var historyStore: HistoryStore!
+    private var tempDirectory: URL!
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suiteName)
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        historyStore = HistoryStore(directory: tempDirectory)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        if let tempDirectory {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+        tempDirectory = nil
+        historyStore = nil
+        super.tearDown()
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2, _ condition: () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+    }
+
+    /// S1: Popup re-open (.task re-fires start). Без hasStarted-защиты второй
+    /// `start()` запускает второй refresh → счётчик равен 2.
+    func test_start_calledTwice_runsOnlyOneInitialRefresh() async {
+        let counter = FetchCounter()
+        let provider = CountingProvider(id: "test", counter: counter)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+
+        vm.start()
+        vm.start()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(counter.value, 1, "start() должен запустить ровно один initial refresh")
+    }
+
+    /// S2: Две одновременные поверхности: второй start() пока in-flight не должен
+    /// запускать конкурирующий refresh.
+    func test_start_whileRefreshInFlight_doesNotStartCompetingRefresh() async {
+        let counter = FetchCounter()
+        let gate = FetchGate(isOpen: false)
+        let provider = CountingProvider(id: "test", counter: counter, gate: gate)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+
+        vm.start()
+        await waitUntil { counter.value == 1 } // первый fetch стартовал и встал на gate
+        XCTAssertTrue(vm.isRefreshing)
+
+        vm.start()
+        try? await Task.sleep(nanoseconds: 10_000_000) // дать второму Task шанс стартовать, если бы он был
+        XCTAssertEqual(counter.value, 1, "start() не должен запускать второй fetch, пока первый в полёте")
+
+        await gate.open()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertNotNil(vm.states.first?.snapshot)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(counter.value, 1, "итоговое количество fetch должно быть 1")
+    }
+
+    /// S3: start(initial: false) не вызывает refresh, а последующий start() с
+    /// hasStarted-защитой тоже не должен — контракт полный no-op на 2+ вызов.
+    /// Без защиты второй start() запускает refresh, из-за чего счётчик равен 1.
+    /// Контракт условный: реальных вызывающих start(false) пока нет — пересмотреть,
+    /// если будущей поверхности понадобится «отложенный старт с refresh позже».
+    func test_start_initialFalse_thenStart_doesNotRefresh() async {
+        let counter = FetchCounter()
+        let provider = CountingProvider(id: "test", counter: counter)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+
+        vm.start(false)
+        vm.start()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(counter.value, 0, "start(false) → start() не должен вызывать refresh")
+    }
+
+    /// PIN: refresh() cancel-replace — документирует, что флаг isRefreshing
+    /// корректно переходит в false после отмены устаревшей задачи.
+    /// Должен проходить как до, так и после добавления hasStarted-защиты.
+    func test_refresh_supersededByNewRefresh_onlyLatestApplies_isRefreshingEndsFalse() async {
+        let gate = FetchGate(isOpen: false)
+        let provider = GatedProvider(id: "test", gate: gate)
+        let vm = LimitsViewModel(
+            providers: [provider],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+
+        vm.refresh()
+        vm.refresh()
+        XCTAssertTrue(vm.isRefreshing)
+
+        await gate.open()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertNotNil(vm.states.first?.snapshot)
+        XCTAssertFalse(vm.isRefreshing)
     }
 }
