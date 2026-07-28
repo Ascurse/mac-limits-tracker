@@ -478,3 +478,166 @@ struct TUIOverviewBody: View {
     }
 }
 
+// MARK: - Previews
+
+/// Фикстуры превью: здоровый провайдер (2 окна + история за 24ч → спарклайн),
+/// stale (свежий providerError + lastGood с окнами), error-only и loading
+/// (snapshot == nil) — все четыре состояния одной сводкой.
+private enum ProviderOverviewPreviewFixtures {
+    static let claude = ProviderDescriptor(
+        id: "claude", displayName: "Claude Code", shortName: "Claude",
+        menuBarSymbol: "C", accentColorHex: 0xD97706, loginHelp: nil)
+    static let codex = ProviderDescriptor(
+        id: "codex", displayName: "Codex", shortName: "Codex",
+        menuBarSymbol: "X", accentColorHex: 0x10A37F, loginHelp: nil)
+    static let kimi = ProviderDescriptor(
+        id: "kimi", displayName: "Kimi Code", shortName: "Kimi",
+        menuBarSymbol: "K", accentColorHex: 0x7C5CFF, loginHelp: nil)
+    static let demo = ProviderDescriptor(
+        id: "demo", displayName: "Demo", shortName: "Demo",
+        menuBarSymbol: "D", accentColorHex: 0x0A84FF, loginHelp: nil)
+
+    static func sections(now: Date = Date()) -> [ProviderSectionContent] {
+        PopupContentBuilder.sections(states(now: now), now: now, history: history(now: now))
+    }
+
+    private static func states(now: Date) -> [ProviderState] {
+        [
+            ProviderState(descriptor: claude, snapshot: healthySnapshot(now: now)),
+            ProviderState(descriptor: codex,
+                          snapshot: errorSnapshot(now: now),
+                          lastGoodSnapshot: goodSnapshot(now: now)),
+            ProviderState(descriptor: kimi, snapshot: errorSnapshot(now: now)),
+            ProviderState(descriptor: demo, snapshot: nil),
+        ]
+    }
+
+    private static func healthySnapshot(now: Date) -> LimitsSnapshot {
+        LimitsSnapshot(
+            loggedIn: true, plan: "max",
+            windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 22,
+                               resetsAt: now.addingTimeInterval(2 * 3600)),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 41,
+                               resetsAt: now.addingTimeInterval(3 * 24 * 3600)),
+            ],
+            creditsBalance: nil, rateLimitReachedType: nil,
+            details: [], daysUntilRenewal: nil, renewalDate: nil,
+            usageError: nil, providerError: nil, fetchedAt: now)
+    }
+
+    private static func goodSnapshot(now: Date) -> LimitsSnapshot {
+        LimitsSnapshot(
+            loggedIn: true, plan: "plus",
+            windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 58,
+                               resetsAt: now.addingTimeInterval(3600)),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 12,
+                               resetsAt: now.addingTimeInterval(4 * 24 * 3600)),
+            ],
+            creditsBalance: "42.00", rateLimitReachedType: nil,
+            details: [], daysUntilRenewal: nil, renewalDate: nil,
+            usageError: nil, providerError: nil,
+            fetchedAt: now.addingTimeInterval(-3 * 3600))
+    }
+
+    private static func errorSnapshot(now: Date) -> LimitsSnapshot {
+        LimitsSnapshot(
+            loggedIn: true, plan: nil, windows: nil,
+            creditsBalance: nil, rateLimitReachedType: nil,
+            details: [], daysUntilRenewal: nil, renewalDate: nil,
+            usageError: nil, providerError: "network unreachable", fetchedAt: now)
+    }
+
+    private static func history(now: Date) -> (String) -> [UsageSample] {
+        { providerId in
+            guard providerId == claude.id || providerId == codex.id else { return [] }
+            return (0..<12).flatMap { i in
+                [300, 10080].map { mins in
+                    UsageSample(
+                        providerId: providerId, windowMins: mins,
+                        fetchedAt: now.addingTimeInterval(TimeInterval(-i * 2 * 3600)),
+                        usedPercent: 12 + Double(i) * 2.5 + (mins == 10080 ? 20 : 0),
+                        resetsAt: nil)
+                }
+            }
+        }
+    }
+}
+
+#Preview("System — menuBar") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .system, surface: .menuBar)
+        .padding()
+        .frame(width: 340)
+}
+
+#Preview("System — desktop") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .system, surface: .desktop)
+        .padding()
+        .frame(width: 480)
+}
+
+#Preview("Terminal — menuBar") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .terminal, surface: .menuBar)
+        .font(Font.system(size: 11, design: .monospaced))
+        .foregroundStyle(TerminalPalette.fg)
+        .padding()
+        .frame(width: 340)
+        .background(TerminalPalette.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Terminal — desktop") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .terminal, surface: .desktop)
+        .foregroundStyle(TerminalPalette.fg)
+        .padding()
+        .frame(width: 480)
+        .background(TerminalPalette.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Phosphor — menuBar") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .phosphor, surface: .menuBar)
+        .font(Font.system(size: 11, design: .monospaced))
+        .foregroundStyle(PhosphorPalette.bright)
+        .padding()
+        .frame(width: 340)
+        .background(PhosphorPalette.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Phosphor — desktop") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .phosphor, surface: .desktop)
+        .foregroundStyle(PhosphorPalette.bright)
+        .padding()
+        .frame(width: 480)
+        .background(PhosphorPalette.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("TUI — menuBar") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .tui, surface: .menuBar)
+        .font(Font.system(size: 11, design: .monospaced))
+        .foregroundStyle(TuiPalette.fg)
+        .padding()
+        .frame(width: 340)
+        .background(TuiPalette.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("TUI — desktop") {
+    ProviderOverview(sections: ProviderOverviewPreviewFixtures.sections(),
+                     theme: .tui, surface: .desktop)
+        .foregroundStyle(TuiPalette.fg)
+        .padding()
+        .frame(width: 480)
+        .background(TuiPalette.bg)
+        .preferredColorScheme(.dark)
+}
