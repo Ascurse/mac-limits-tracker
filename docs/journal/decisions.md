@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-28 — Единая effective-политика активации: LaunchMode × два окна, дедуп через appliedPolicy (bd mac-limits-tracker-3ip.5)
+
+**Контекст:** Settings scene стала вторым окном через `WindowPresentationController`: политика должна оставаться `.regular`, пока открыто хотя бы одно окно (main ИЛИ settings), а не дёргаться при закрытии одного из двух.
+**Решение:** контроллер хранит `isMainWindowPresented` + `isSettingsWindowPresented` + `launchMode`; единственная точка применения — `applyEffectivePolicy()`: в `.persistentRegular` всегда `.regular`, в `.hybrid` — `.regular`, пока открыто любое окно. `appliedPolicy` дедуплицирует: `apply` вызывается только при реальной смене эффективной политики, а не каждого флага.
+**Почему:** два независимых `apply` от каждого окна передёргивали бы друг друга (закрытие Settings при открытом main демоутило бы процесс в `.accessory`). Дедуп убрал и лишние вызовы `setActivationPolicy`: без него `.persistentRegular` слал повторный `.regular` на каждый open/close — ожидание пин-теста скорректировано с `[.regular, .regular]` на `[.regular]`.
+**Последствия:** предсказание ADR 3ip.7 («окна дёргают `setMainWindowPresented`, режим запуска решает демоут») подтверждено: Settings scene подключена через `setSettingsWindowPresented` в том же контроллере. Каждое новое окно приложения обязано добавлять свой флаг в `WindowPresentationController`, а не звать `NSApp.setActivationPolicy` напрямую. Пин-тесты: 18 в `WindowPresentationControllerTests` (hybrid lifecycle, persistentRegular, settings-окно, два combined — settings-only lifecycle и persistentRegular × settings).
+
 ## 2026-07-28 — Bundled `.app` — persistent `.regular` activation, `swift run` — hybrid `.accessory` (bd mac-limits-tracker-3ip.7)
 
 **Контекст:** 3ip.4 перевёл активацию полностью в runtime, но `.app` по-прежнему запускался как menu-bar-only (`.accessory`) — Dock-иконки и Cmd-Tab не было, хотя приложение уже умеет singleton desktop window и в будущем получит отдельную Settings-сцену. `swift run` без бандла должен остаться menu-bar-first, иначе dev-режим захламляет Dock.
