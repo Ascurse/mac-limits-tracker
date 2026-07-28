@@ -335,7 +335,21 @@ extension KimiLimitsProvider {
 }
 
 public enum ProcessRunner {
+    public enum RunError: Swift.Error, LocalizedError {
+        case unsafeBinaryPath(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .unsafeBinaryPath(let path):
+                return "unsafe binary path: \(path) (must be absolute)"
+            }
+        }
+    }
+
     public static func run(_ binary: String, _ args: [String]) async throws -> Data {
+        guard binary.hasPrefix("/") else {
+            throw RunError.unsafeBinaryPath(binary)
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = args
@@ -408,6 +422,10 @@ public final class CodexAppServerRpc {
         ], id: 1)
         let rateReq = Self.makeEnvelope(method: "account/rateLimits/read", params: [:], id: 2)
         let stdinBytes = (initReq + "\n" + rateReq + "\n").data(using: .utf8) ?? Data()
+
+        guard codexBinary.hasPrefix("/") else {
+            throw Error.spawnFailed("unsafe binary path: \(codexBinary) (must be absolute)")
+        }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexBinary)
