@@ -135,14 +135,14 @@ Releases are built by GitHub Actions: pushing a `v*` tag (e.g. `v0.2.0`) builds 
 ```bash
 swift run MacLimitsTracker
 ```
-This drops you into a SwiftUI `MenuBarExtra` immediately. The Dock icon is hidden automatically (`LSUIElement=true` / accessory activation policy).
+This drops you into a SwiftUI `MenuBarExtra` immediately. The Dock icon is hidden automatically (accessory activation policy applied at runtime).
 
 ### Production `.app`
 ```bash
 ./make-app.sh
 open dist/MacLimitsTracker.app
 ```
-`make-app.sh` runs `swift build -c release` and assembles `dist/MacLimitsTracker.app` with an `Info.plist` (`LSUIElement=true`, bundle id `dev.ascurse.MacLimitsTracker`).
+`make-app.sh` runs `swift build -c release` and assembles `dist/MacLimitsTracker.app` with an `Info.plist` (bundle id `dev.ascurse.MacLimitsTracker`). The bundled app runs as a regular desktop app (Dock/Cmd-Tab) via runtime activation policy.
 
 ### Run on boot
 Toggle **Launch at login** in the popup footer (uses `SMAppService`, macOS 13+). Alternatively, add `dist/MacLimitsTracker.app` to **System Settings → General → Login Items → Open at login** manually.
