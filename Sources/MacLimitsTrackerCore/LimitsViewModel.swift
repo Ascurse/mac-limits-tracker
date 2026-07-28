@@ -72,7 +72,11 @@ public final class LimitsViewModel: ObservableObject {
         providers: [any LimitsProvider], specs: [DynamicProviderSpec]
     ) -> [String] {
         var ids = providers.map { $0.descriptor.id }
-        for spec in specs where !ids.contains(spec.id) { ids.append(spec.id) }
+        var idSet = Set(ids)
+        for spec in specs where !idSet.contains(spec.id) {
+            ids.append(spec.id)
+            idSet.insert(spec.id)
+        }
         return ids
     }
 
