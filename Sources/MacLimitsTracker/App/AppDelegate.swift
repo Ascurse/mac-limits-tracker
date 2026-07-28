@@ -2,17 +2,16 @@ import AppKit
 import SwiftUI
 import MacLimitsTrackerCore
 
-/// AppDelegate. Гибридная активация (bd mac-limits-tracker-3ip.4): NSApp
-/// гарантированно не-nil только в `applicationDidFinishLaunching`, поэтому
-/// стартовая `.accessory`-политика применяется отсюда через
-/// `WindowPresentationController`. Дальнейшие переключения (`.regular`
+/// AppDelegate. Активация применяется из `applicationDidFinishLaunching`,
+/// потому что `NSApp` гарантированно не-nil только на этом этапе
+/// (bd mac-limits-tracker-3ip.4). Дальнейшие переключения (`.regular`
 /// при показе Window сцены) приходят из самого окна.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Контроллер активации, проставляется `MacLimitsTrackerApp.init`.
     var windowPresentationController: WindowPresentationController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        windowPresentationController?.ensureAccessoryOnLaunch()
+        windowPresentationController?.applyLaunchPolicy()
     }
 }
 

@@ -9,9 +9,8 @@ struct MacLimitsTrackerApp: App {
     private let desktopWidgetController: DesktopWidgetController
     private let launchAtLoginManager = LaunchAtLoginManager()
     private let notificationManager: NotificationManager
-    /// Гибридная активация (bd mac-limits-tracker-3ip.4): держит процесс
-    /// в `.accessory` пока singleton desktop window скрыт, и продвигает
-    /// в `.regular` (Dock/Cmd-Tab/Window menu) при его показе.
+    /// Контроллер активации (bd mac-limits-tracker-3ip.7): `.persistentRegular`
+    /// для собранного `.app`-бандла, `.hybrid` для `swift run`.
     private let windowPresentationController: WindowPresentationController
 
     init() {
@@ -21,14 +20,19 @@ struct MacLimitsTrackerApp: App {
         _viewModel = StateObject(wrappedValue: viewModel)
         desktopWidgetController = DesktopWidgetController(viewModel: viewModel)
         notificationManager = NotificationManager(viewModel: viewModel)
-        let controller = WindowPresentationController { policy in
-            switch policy {
-            case .accessory: NSApp.setActivationPolicy(.accessory)
-            case .regular: NSApp.setActivationPolicy(.regular)
+        let launchMode: WindowPresentationController.LaunchMode =
+            Bundle.main.bundleIdentifier != nil ? .persistentRegular : .hybrid
+        let controller = WindowPresentationController(
+            launchMode: launchMode,
+            apply: { policy in
+                switch policy {
+                case .accessory: NSApp.setActivationPolicy(.accessory)
+                case .regular: NSApp.setActivationPolicy(.regular)
+                }
             }
-        }
-        // `ensureAccessoryOnLaunch()` не зовём здесь: NSApp на этом этапе ещё
-        // nil. AppDelegate вызовет его из `applicationDidFinishLaunching`.
+        )
+        // `applyLaunchPolicy()` не зовём здесь: NSApp на этом этапе ещё nil.
+        // AppDelegate вызовет её из `applicationDidFinishLaunching`.
         self.windowPresentationController = controller
         appDelegate.windowPresentationController = controller
     }
@@ -74,6 +78,16 @@ struct MacLimitsTrackerApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             OpenLimitsTrackerCommand()
+        }
+
+        // Нативное окно Settings (Cmd-,): композиция тех же 4 общих секций
+        // с поверхностью `.desktop` (bd mac-limits-tracker-3ip.5). Окно идёт
+        // через тот же WindowPresentationController — политика остаётся
+        // .regular, пока открыто хотя бы одно окно.
+        Settings {
+            SettingsRootView(viewModel: viewModel, launchAtLogin: launchAtLoginManager)
+                .onAppear { windowPresentationController.setSettingsWindowPresented(true) }
+                .onDisappear { windowPresentationController.setSettingsWindowPresented(false) }
         }
     }
 
