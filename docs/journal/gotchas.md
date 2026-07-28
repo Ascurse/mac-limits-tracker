@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-28 — `NSApp` is nil в `MacLimitsTrackerApp.init` (bd mac-limits-tracker-3ip.4)
+
+**Симптом:** свежесобранный бандл крашится на старте с `Swift runtime failure: Unexpectedly found nil while implicitly unwrapping an Optional value` в `MacLimitsTrackerApp.init` → `WindowPresentationController.ensureAccessoryOnLaunch()` → `NSApp.setActivationPolicy(.accessory)`. Падение видно в `~/Library/Logs/DiagnosticReports/MacLimitsTracker-*.ips`, в `lldb --batch` — `frame #1: closure #1 in MacLimitsTrackerApp.init`.
+**Причина:** SwiftUI `App.init()` отрабатывает до того, как `NSApplication.shared` создан и привязан к процессу — `NSApp` (force-unwrapped) в этот момент nil. Контроллер активации (`WindowPresentationController`) принимает closure с `NSApp.setActivationPolicy(...)`, и если кто-то вызывает `ensureAccessoryOnLaunch()` из init — closure тут же падает.
+**Обход:** создавать контроллер и всю AppKit-зависимую логику в init без вызова методов, которые дёргают `NSApp`; первое касание — `AppDelegate.applicationDidFinishLaunching`, где `NSApp` гарантированно не-nil. Сам контроллер — в Core, без `import AppKit` (closure-замыкание с `Int`-маркером `.accessory/.regular`); маппинг на `NSApplication.ActivationPolicy` — в app-таргете в одном месте, и его вызов отложен на `applicationDidFinishLaunching`.
+**Где это в коде:** [Sources/MacLimitsTracker/App/MacLimitsTrackerApp.swift](../../Sources/MacLimitsTracker/App/MacLimitsTrackerApp.swift) (init), [Sources/MacLimitsTracker/App/AppDelegate.swift](../../Sources/MacLimitsTracker/App/AppDelegate.swift) (`applicationDidFinishLaunching`), [Sources/MacLimitsTrackerCore/App/WindowPresentationController.swift](../../Sources/MacLimitsTrackerCore/App/WindowPresentationController.swift).
+
 ## 2026-07-26 — `LimitsViewModel` в тестах без инжекта `historyStore` пишет в реальный Application Support
 
 **Симптом:** после `swift test` в `~/Library/Application Support/dev.ascurse.MacLimitsTracker/history.json` появляются фейковые сэмплы от StubProvider'ов.
