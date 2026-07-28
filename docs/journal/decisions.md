@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-28 — ProviderOverview: вынос обзора провайдеров из popup-тем (bd mac-limits-tracker-3ip.2)
+
+**Контекст:** сводка провайдеров собиралась инлайн в четырёх темах попапа (System/Terminal/Phosphor/TUI) — каждая дублировала цикл `states → PopupContentBuilder.section` и брала `LimitsViewModel` целиком, поэтому переиспользовать обзор вне попапа (desktop window, будущие поверхности) было нельзя без копирования.
+**Решение:** чистый `ProviderOverview` (app-таргет, `UI/ProviderOverview.swift`): вход — готовые `[ProviderSectionContent]`, `AppTheme` и `ProviderOverviewSurface` (menuBar/desktop, только layout-плотность); transport/polling/UserDefaults внутрь не попадают. Пакетная сборка секций — `PopupContentBuilder.sections` в Core (единственное место бизнес-правил); темы стали тонкими оболочками (header + ProviderOverview + footer). `DesktopWidgetView` сознательно не мигрирован — он читает `ProviderState`, а не `PopupRow` (см. запись 2026-07-26).
+**Почему:** единый источник правил уже жил в Core (`PopupContentBuilder`/`SnapshotResolver`) — вынос касался только assembly-правила и рендера; surface-параметр даёт desktop более просторную композицию без форка правил форматирования.
+**Последствия:** новые popup-подобные поверхности обязаны использовать `ProviderOverview`, а не инлайнить цикл `section(...)`; новый кейс `PopupRow` по-прежнему compile-enforced во всех 4 телах тем; desktop-плотность пока упражняется через `#Preview`, монтирование в Window — отдельная задача эпика.
+
 ## 2026-07-26 — HistoryStore: первая JSON-персистентность на диске + sparkline за 24ч (bd mac-limits-tracker-08m, gh #31)
 
 **Контекст:** каждый refresh перезаписывал снапшот, история нигде не сохранялась — невозможны ни графики, ни burn-rate прогноз (gvo), ни экспорт (dti). До этого все сторы проекта жили на UserDefaults.
