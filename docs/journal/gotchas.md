@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-07-29 — AX-автоматизация MenuBarExtra-popup'а нестабильна: toggle-клик, гонки `entire contents`, порядок окон (bd mac-limits-tracker-3ip.6)
+
+**Симптом:** при GUI-QA через `osascript` System Events клик по `menu bar item 1 of menu bar 2` то открывает, то закрывает popup; `entire contents of window 1` периодически возвращает пустое или частичное дерево (0 кнопок при живом popup); при открытом main window поиск кнопок popup'а в `window 1` падает, хотя popup на экране.
+**Причина:** клик по menu bar item — toggle (open/close), а не «открыть»; AX-дерево SwiftUI внутри `MenuBarExtra(.window)` материализуется асинхронно после появления окна; AX-окна упорядочены front-to-back, поэтому `window 1` — это то, что сейчас key (при открытом «Limits Tracker» — main window, а не popup).
+**Обход:** открытие — цикл «клик → poll до появления окна с subrole `AXSystemDialog`, до 3 попыток»; искать элементы по всем окнам с фильтром `subrole = AXSystemDialog`, а не в `window 1`; кнопки находить по `help`-атрибуту (AX `name` у SwiftUI-кнопок в popup пуст — текст лежит в дочерних `AXStaticText`); поиск — retry до ~4 с; скриншоты делать без кражи фокуса другим приложением — popup гаснет при потере key (это же и есть механизм его авто-дисмисса при открытии main/Settings окна).
+**Где это в коде:** [Sources/MacLimitsTracker/UI/StatusBarView.swift](../../Sources/MacLimitsTracker/UI/StatusBarView.swift) (контент `MenuBarExtra(.window)`); smoke-матрица coexistence (3ip.8) и rollout gate (3ip.11) автоматизируют те же поверхности.
+
 ## 2026-07-28 — Свежий ad-hoc `.app` вызывает keychain ACL-диалог «Claude Code-credentials» при первом refresh (bd mac-limits-tracker-3ip.7)
 
 **Симптом:** при первом запуске собранного `dist/MacLimitsTracker.app` и нажатии «Refresh» macOS показывает системный диалог с просьбой разрешить доступ к записи Keychain `Claude Code-credentials`; без подтверждения Claude-провайдер не может достать токен.
