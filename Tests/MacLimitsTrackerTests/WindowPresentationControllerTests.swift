@@ -1,10 +1,9 @@
 import XCTest
 @testable import MacLimitsTrackerCore
 
-/// WindowPresentationController — гибридная активация окна (bd mac-limits-tracker-3ip.4):
-/// сцены приложения остаются menu-bar-only, но при показе singleton desktop window
-/// процесс продвигается в `.regular` (Dock/Cmd-Tab/Window menu), а при закрытии
-/// возвращается в `.accessory` (background-only). Policy применяется через
+/// WindowPresentationController — активация процесса для двух режимов запуска:
+/// `.hybrid` (menu-bar-first, dev/`swift run`) и `.persistentRegular`
+/// (полноценное desktop-приложение в `.app`). Policy применяется через
 /// инжектируемое замыкание, чтобы контроллер был пригоден для юнит-тестов
 /// без поднятия NSApp.
 final class WindowPresentationControllerTests: XCTestCase {
@@ -25,16 +24,18 @@ final class WindowPresentationControllerTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - Hybrid (default)
+
     func test_initialState_isNotPresentedAndPolicyNotApplied() {
         XCTAssertFalse(controller.isMainWindowPresented)
         XCTAssertTrue(
             recordedPolicies.isEmpty,
-            "Constructor не должен ничего применять, пока не вызван ensureAccessoryOnLaunch"
+            "Constructor не должен ничего применять, пока не вызван applyLaunchPolicy"
         )
     }
 
-    func test_ensureAccessoryOnLaunch_appliesAccessory() {
-        controller.ensureAccessoryOnLaunch()
+    func test_hybrid_applyLaunchPolicy_appliesAccessory() {
+        controller.applyLaunchPolicy()
         XCTAssertEqual(recordedPolicies, [.accessory])
     }
 
@@ -72,11 +73,37 @@ final class WindowPresentationControllerTests: XCTestCase {
         XCTAssertEqual(recordedPolicies, [.regular, .accessory])
     }
 
-    func test_lifecycle_openCloseOpen_appliesRegularAccessoryRegular() {
-        controller.ensureAccessoryOnLaunch()
+    func test_hybrid_lifecycle_openCloseOpen_appliesRegularAccessoryRegular() {
+        controller.applyLaunchPolicy()
         controller.setMainWindowPresented(true)
         controller.setMainWindowPresented(false)
         controller.setMainWindowPresented(true)
         XCTAssertEqual(recordedPolicies, [.accessory, .regular, .accessory, .regular])
+    }
+
+    // MARK: - Persistent regular
+
+    func test_persistentRegular_applyLaunchPolicy_appliesRegular() {
+        controller = WindowPresentationController(
+            launchMode: .persistentRegular,
+            apply: { [weak self] policy in self?.recordedPolicies.append(policy) }
+        )
+        controller.applyLaunchPolicy()
+        XCTAssertEqual(recordedPolicies, [.regular])
+    }
+
+    func test_persistentRegular_windowOpenClose_staysRegular() {
+        controller = WindowPresentationController(
+            launchMode: .persistentRegular,
+            apply: { [weak self] policy in self?.recordedPolicies.append(policy) }
+        )
+        controller.applyLaunchPolicy()
+        controller.setMainWindowPresented(true)
+        controller.setMainWindowPresented(false)
+        XCTAssertEqual(
+            recordedPolicies,
+            [.regular, .regular],
+            "persistentRegular never demotes to accessory"
+        )
     }
 }
