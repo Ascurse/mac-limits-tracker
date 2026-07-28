@@ -716,3 +716,128 @@ final class PopupContentBuilderStaleTests: XCTestCase {
         XCTAssertEqual(text, "Updated \(formatter.string(from: Self.past))")
     }
 }
+
+final class PopupContentBuilderSectionsTests: XCTestCase {
+    private static let now = Date(timeIntervalSince1970: 2_000_000)
+    private static let past = Date(timeIntervalSince1970: 1_000_000)
+
+    private func state(
+        descriptor: ProviderDescriptor,
+        plan: String? = nil,
+        windows: [SnapshotWindow]?,
+        providerError: String? = nil,
+        lastGoodWindows: [SnapshotWindow]? = nil,
+        lastGoodPlan: String? = nil,
+        fetchedAt: Date = Date(timeIntervalSince1970: 2_000_000)
+    ) -> ProviderState {
+        let snapshot = LimitsSnapshot(
+            loggedIn: true, plan: plan, windows: windows,
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: providerError, fetchedAt: fetchedAt
+        )
+        let lastGood: LimitsSnapshot? = lastGoodWindows.map {
+            LimitsSnapshot(
+                loggedIn: true, plan: lastGoodPlan, windows: $0,
+                creditsBalance: nil, rateLimitReachedType: nil, details: [],
+                daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+                providerError: nil, fetchedAt: Self.past
+            )
+        }
+        return ProviderState(descriptor: descriptor, snapshot: snapshot, lastGoodSnapshot: lastGood)
+    }
+
+    private func sample(providerId: String, windowMins: Int, hoursAgo: Double, used: Double) -> UsageSample {
+        UsageSample(
+            providerId: providerId,
+            windowMins: windowMins,
+            fetchedAt: Self.now.addingTimeInterval(-hoursAgo * 3600),
+            usedPercent: used,
+            resetsAt: nil
+        )
+    }
+
+    private func containsSparkline(_ rows: [PopupRow]) -> Bool {
+        rows.contains { if case .sparkline = $0 { return true }; return false }
+    }
+
+    func test_sections_mapsStatesInOrder() {
+        let states = [
+            state(descriptor: claudeDescriptor, windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 10, resetsAt: nil)]),
+            state(descriptor: codexDescriptor, windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 20, resetsAt: nil)])
+        ]
+        let sections: [ProviderSectionContent] = PopupContentBuilder.sections(states, now: Self.now)
+        XCTAssertEqual(sections.count, 2)
+        XCTAssertEqual(sections[0].descriptor.id, "claude")
+        XCTAssertEqual(sections[0].title, "Claude Code")
+        XCTAssertEqual(sections[1].descriptor.id, "codex")
+        XCTAssertEqual(sections[1].title, "Codex")
+    }
+
+    func test_sections_routesHistoryByProviderId() {
+        var requestedIds: [String] = []
+        let claudeState = state(descriptor: claudeDescriptor, windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 10, resetsAt: nil)])
+        let codexState = state(descriptor: codexDescriptor, windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 20, resetsAt: nil)])
+        let history: (String) -> [UsageSample] = { id in
+            requestedIds.append(id)
+            if id == "claude" {
+                return [self.sample(providerId: "claude", windowMins: 300, hoursAgo: 1, used: 30)]
+            }
+            return []
+        }
+        let sections: [ProviderSectionContent] = PopupContentBuilder.sections([claudeState, codexState], now: Self.now, history: history)
+        XCTAssertEqual(requestedIds, ["claude", "codex"])
+        XCTAssertTrue(containsSparkline(sections[0].rows))
+        XCTAssertFalse(containsSparkline(sections[1].rows))
+    }
+
+    func test_sections_propagatesThresholds() {
+        let strict = SeverityThresholds(warningRemaining: 60, criticalRemaining: 50)
+        let s = state(
+            descriptor: claudeDescriptor,
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil)]
+        )
+        let strictSections: [ProviderSectionContent] = PopupContentBuilder.sections([s], now: Self.now, thresholds: strict)
+        guard case .window(let w) = strictSections[0].rows[1] else {
+            return XCTFail("expected window row, rows: \(strictSections[0].rows)")
+        }
+        XCTAssertEqual(w.severity, .critical)
+
+        let standardSections: [ProviderSectionContent] = PopupContentBuilder.sections([s], now: Self.now)
+        guard case .window(let w2) = standardSections[0].rows[1] else {
+            return XCTFail("expected window row, rows: \(standardSections[0].rows)")
+        }
+        XCTAssertEqual(w2.severity, .normal)
+    }
+
+    func test_sections_emptyStates_returnsEmpty() {
+        let sections: [ProviderSectionContent] = PopupContentBuilder.sections([], now: Self.now)
+        XCTAssertEqual(sections, [])
+    }
+
+    func test_sections_staleState_rendersNoteAndErrorRows() {
+        let lastGood = [SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil)]
+        let s = state(
+            descriptor: claudeDescriptor,
+            plan: "max",
+            windows: nil,
+            providerError: "network down",
+            lastGoodWindows: lastGood,
+            lastGoodPlan: "max"
+        )
+        let sections: [ProviderSectionContent] = PopupContentBuilder.sections([s], now: Self.now)
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertTrue(sections[0].isStale)
+        XCTAssertEqual(sections[0].rows.count, 4)
+        XCTAssertEqual(sections[0].rows[0], .detail(key: "Plan", value: "max"))
+        guard case .window(let w) = sections[0].rows[1] else {
+            return XCTFail("expected window from last-good, rows: \(sections[0].rows)")
+        }
+        XCTAssertEqual(w.remainingPercent, 50)
+        guard case .note(let note) = sections[0].rows[2] else {
+            return XCTFail("expected note 'updated ... ago', rows: \(sections[0].rows)")
+        }
+        XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
+        XCTAssertEqual(sections[0].rows[3], .error("network down"))
+    }
+}
