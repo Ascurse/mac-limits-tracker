@@ -549,6 +549,8 @@ public enum KeychainStore {
 
 /// Минимальный сетевой клиент: GET с Bearer-токеном.
 public enum Http {
+    private static let sharedSession = URLSession(configuration: .ephemeral)
+
     /// `userAgent` по умолчанию — как у Claude Code CLI, чтобы не менять поведение
     /// существующих вызовов; провайдеры с другим API (напр. Kimi) передают свой.
     public static func httpGet(
@@ -559,9 +561,7 @@ public enum Http {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
-        let session = URLSession(configuration: .ephemeral)
-        defer { session.finishTasksAndInvalidate() }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await sharedSession.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw NSError(
                 domain: "Network",
@@ -596,9 +596,7 @@ public enum Http {
         }.joined(separator: "&")
         request.httpBody = Data(bodyString.utf8)
 
-        let session = URLSession(configuration: .ephemeral)
-        defer { session.finishTasksAndInvalidate() }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await sharedSession.data(for: request)
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         return (statusCode, data)
     }
