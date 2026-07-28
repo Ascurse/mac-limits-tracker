@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import MacLimitsTrackerCore
 
 /// Системная тема: текущий нативный вид попапа.
@@ -10,13 +9,13 @@ struct SystemStatusView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            ForEach(viewModel.states) { state in
-                Divider()
-                section(PopupContentBuilder.section(
-                    state,
-                    history: viewModel.historySamples(providerId: state.descriptor.id),
-                    thresholds: viewModel.severityThresholds))
-            }
+            ProviderOverview(
+                sections: PopupContentBuilder.sections(
+                    viewModel.states,
+                    history: viewModel.historySamples(providerId:),
+                    thresholds: viewModel.severityThresholds),
+                theme: .system,
+                surface: .menuBar)
             Divider()
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
         }
@@ -46,78 +45,6 @@ struct SystemStatusView: View {
             .buttonStyle(.borderless)
             .disabled(viewModel.isRefreshing)
             .accessibilityLabel("Refresh")
-        }
-    }
-
-    private func section(_ s: ProviderSectionContent) -> some View {
-        let accent = Color(hex: s.descriptor.accentColorHex)
-        return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel(s.title, color: accent,
-                         loginHelp: s.descriptor.loginHelp)
-            ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
-                rowView(row, accent: accent)
-            }
-        }
-        .opacity(s.isStale ? 0.55 : 1)
-    }
-
-    @ViewBuilder
-    private func rowView(_ row: PopupRow, accent: Color) -> some View {
-        switch row {
-        case .detail(let key, let value):
-            detailRow(key, value)
-        case .window(let w):
-            detailRow("\(w.longLabel) remaining", w.remainingText)
-            detailRow("\(w.longLabel) resets", w.resetText ?? "—")
-        case .sparkline(let spark):
-            // PointMark обязателен: одиночный LineMark с одной точкой ничего не рисует.
-            Chart(spark.points, id: \.time) { point in
-                LineMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
-                PointMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .foregroundStyle(accent)
-            .frame(height: 28)
-        case .error(let message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(.red)
-        case .note(let text):
-            Text(text).font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    private func sectionLabel(_ title: String, color: Color, loginHelp: LoginHelp?) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-            Spacer()
-            if let loginHelp {
-                Button {
-                    openProviderCLI(loginHelp)
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                }
-                .buttonStyle(.borderless)
-                .help(loginHelp.helpText)
-                .accessibilityLabel("Open \(title)")
-            }
-        }
-    }
-
-    private func detailRow(_ key: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(key)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.caption.monospacedDigit())
-                .lineLimit(1)
-                .truncationMode(.middle)
         }
     }
 }

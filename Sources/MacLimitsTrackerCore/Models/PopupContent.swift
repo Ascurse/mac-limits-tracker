@@ -144,6 +144,18 @@ public enum PopupContentBuilder {
                                       isStale: resolved.isStale)
     }
 
+    /// Пакетная сборка секций для всех состояний — единое правило
+    /// «state + history(providerId) + thresholds → ProviderSectionContent»,
+    /// которое раньше дублировалось во всех 4 темах попапа.
+    public static func sections(
+        _ states: [ProviderState],
+        now: Date = Date(),
+        history: (String) -> [UsageSample] = { _ in [] },
+        thresholds: SeverityThresholds = .standard
+    ) -> [ProviderSectionContent] {
+        states.map { section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds) }
+    }
+
     private static func rows(
         for snapshot: LimitsSnapshot?,
         now: Date,

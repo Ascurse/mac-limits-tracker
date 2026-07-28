@@ -6,142 +6,45 @@ struct TerminalStatusView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let desktopWidgetController: DesktopWidgetController
 
-    private enum Palette {
-        static let bg = Color(hex: 0x1A1B26)
-        static let fg = Color(hex: 0xC0CAF5)
-        static let dim = Color(hex: 0x565F89)
-        static let track = Color(hex: 0x2F334D)
-        static let cyan = Color(hex: 0x7DCFFF)
-        static let warning = Color(hex: 0xE0AF68)
-        static let critical = Color(hex: 0xF7768E)
-    }
-
     private let mono = Font.system(size: 11, design: .monospaced)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            ForEach(viewModel.states) { state in
-                section(PopupContentBuilder.section(
-                    state,
-                    history: viewModel.historySamples(providerId: state.descriptor.id),
-                    thresholds: viewModel.severityThresholds))
-            }
-            Rectangle().fill(Palette.track).frame(height: 1)
+            ProviderOverview(
+                sections: PopupContentBuilder.sections(
+                    viewModel.states,
+                    history: viewModel.historySamples(providerId:),
+                    thresholds: viewModel.severityThresholds),
+                theme: .terminal,
+                surface: .menuBar)
+            Rectangle().fill(TerminalPalette.track).frame(height: 1)
             PopupFooter(viewModel: viewModel, desktopWidgetController: desktopWidgetController)
-                .tint(Palette.cyan)
+                .tint(TerminalPalette.cyan)
         }
         .font(mono)
-        .foregroundStyle(Palette.fg)
+        .foregroundStyle(TerminalPalette.fg)
         .padding(16)
         .frame(minWidth: 320, idealWidth: 340)
-        .background(Palette.bg)
+        .background(TerminalPalette.bg)
         .environment(\.colorScheme, .dark) // системные контролы читаемы на тёмном фоне
     }
 
     private var header: some View {
         HStack {
-            Text("limits-tracker").foregroundStyle(Palette.cyan)
+            Text("limits-tracker").foregroundStyle(TerminalPalette.cyan)
             Spacer()
             Text(PopupContentBuilder.updatedText(states: viewModel.states))
-                .foregroundStyle(Palette.dim)
+                .foregroundStyle(TerminalPalette.dim)
             Button {
                 viewModel.refresh()
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(viewModel.isRefreshing ? Palette.dim : Palette.cyan)
+                    .foregroundStyle(viewModel.isRefreshing ? TerminalPalette.dim : TerminalPalette.cyan)
             }
             .buttonStyle(.borderless)
             .disabled(viewModel.isRefreshing)
             .accessibilityLabel("Refresh")
-        }
-    }
-
-    private func section(_ s: ProviderSectionContent) -> some View {
-        let accent = Color(hex: s.descriptor.accentColorHex)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text("●").foregroundStyle(accent)
-                Text(s.descriptor.id)
-                // Значение Plan из первой detail-строки показываем рядом с именем.
-                if case .detail(let key, let value) = s.rows.first, key == "Plan" {
-                    Text(value).foregroundStyle(Palette.dim)
-                }
-                Spacer()
-                if let loginHelp = s.descriptor.loginHelp {
-                    Button {
-                        openProviderCLI(loginHelp)
-                    } label: {
-                        Image(systemName: "arrow.up.forward.app")
-                            .foregroundStyle(Palette.cyan)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
-                }
-            }
-            ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
-                rowView(row, accent: accent)
-            }
-        }
-        .opacity(s.isStale ? 0.55 : 1)
-    }
-
-    @ViewBuilder
-    private func rowView(_ row: PopupRow, accent: Color) -> some View {
-        switch row {
-        case .detail(let key, let value):
-            // Plan уже показан в заголовке секции.
-            if key != "Plan" {
-                HStack {
-                    Text(key.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(value).lineLimit(1).truncationMode(.middle)
-                }
-            }
-        case .window(let w):
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(w.shortLabel).foregroundStyle(Palette.dim)
-                        .frame(width: 20, alignment: .leading)
-                    bar(w, accent: accent)
-                    Text(w.remainingText).monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
-                }
-                if let reset = w.resetText {
-                    Text("resets \(reset)")
-                        .foregroundStyle(Palette.dim)
-                        .padding(.leading, 26)
-                }
-            }
-        case .sparkline(let spark):
-            Text(AsciiSparkline.render(usedPercents: spark.points.map(\.usedPercent)))
-                .foregroundStyle(accent)
-                .padding(.leading, 26)
-        case .error(let message):
-            Text("✗ \(message)").foregroundStyle(Palette.critical)
-        case .note(let text):
-            Text(text).foregroundStyle(Palette.dim)
-        }
-    }
-
-    private func bar(_ w: WindowContent, accent: Color) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Palette.track)
-                Capsule().fill(barColor(w.severity, accent: accent))
-                    .frame(width: max(4, geo.size.width * w.remainingPercent / 100))
-            }
-        }
-        .frame(height: 4)
-        .animation(.easeOut(duration: 0.3), value: w.remainingPercent)
-    }
-
-    private func barColor(_ severity: Severity, accent: Color) -> Color {
-        switch severity {
-        case .normal:   return accent
-        case .warning:  return Palette.warning
-        case .critical: return Palette.critical
         }
     }
 }
