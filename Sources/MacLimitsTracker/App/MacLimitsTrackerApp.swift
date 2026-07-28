@@ -4,7 +4,7 @@ import MacLimitsTrackerCore
 @main
 struct MacLimitsTrackerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var viewModel = LimitsViewModel()
+    @StateObject private var viewModel: LimitsViewModel
     @AppStorage("menuBarDisplayMode") private var displayMode: MenuBarDisplayMode = .iconAndText
     @AppStorage("showDesktopWidget") private var showDesktopWidget = false
     private let desktopWidgetController: DesktopWidgetController
