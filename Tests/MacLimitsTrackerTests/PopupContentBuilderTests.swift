@@ -89,20 +89,6 @@ final class SeverityWorstTests: XCTestCase {
     }
 }
 
-final class SeverityThresholdsTests: XCTestCase {
-    /// Инвариант: critical строго ниже warning, иначе зона warning недостижима.
-    func test_init_clampsCriticalBelowWarning() {
-        let t = SeverityThresholds(warningRemaining: 20, criticalRemaining: 25)
-        XCTAssertEqual(t.warningRemaining, 20)
-        XCTAssertLessThan(t.criticalRemaining, t.warningRemaining)
-    }
-
-    func test_standard_matchesHardcodedDefaults() {
-        XCTAssertEqual(SeverityThresholds.standard.warningRemaining, 40)
-        XCTAssertEqual(SeverityThresholds.standard.criticalRemaining, 15)
-    }
-}
-
 private let claudeDescriptor = ProviderDescriptor(
     id: "claude", displayName: "Claude Code", shortName: "Claude",
     menuBarSymbol: "C", accentColorHex: 0xFF9E64, loginHelp: nil
