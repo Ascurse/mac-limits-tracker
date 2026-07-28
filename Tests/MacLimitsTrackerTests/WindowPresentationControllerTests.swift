@@ -79,4 +79,54 @@ final class WindowPresentationControllerTests: XCTestCase {
         controller.setMainWindowPresented(true)
         XCTAssertEqual(recordedPolicies, [.accessory, .regular, .accessory, .regular])
     }
+
+    // MARK: - Settings window (bd mac-limits-tracker-3ip.5)
+    // Нативная Settings scene — второе окно, идущее через тот же контроллер:
+    // эффективная политика = .regular, пока открыто хотя бы одно окно
+    // (main ИЛИ settings), и .accessory только когда закрыты оба.
+
+    func test_initialState_settingsNotPresented() {
+        XCTAssertFalse(controller.isSettingsWindowPresented)
+    }
+
+    func test_setSettingsWindowPresentedTrue_appliesRegular() {
+        controller.setSettingsWindowPresented(true)
+        XCTAssertTrue(controller.isSettingsWindowPresented)
+        XCTAssertEqual(recordedPolicies, [.regular])
+    }
+
+    func test_setSettingsWindowPresentedTrueTwice_idempotent() {
+        controller.setSettingsWindowPresented(true)
+        controller.setSettingsWindowPresented(true)
+        XCTAssertEqual(recordedPolicies, [.regular])
+    }
+
+    func test_settingsOpenThenMainOpenThenSettingsClose_staysRegular() {
+        controller.setSettingsWindowPresented(true)
+        controller.setMainWindowPresented(true)
+        controller.setSettingsWindowPresented(false)
+        XCTAssertEqual(
+            recordedPolicies, [.regular],
+            "Main window всё ещё открыт — понижать политику нельзя"
+        )
+    }
+
+    func test_bothWindowsCloseInEitherOrder_demotesOnlyAfterLast() {
+        controller.setMainWindowPresented(true)
+        controller.setSettingsWindowPresented(true)
+        controller.setMainWindowPresented(false)
+        controller.setSettingsWindowPresented(false)
+        XCTAssertEqual(
+            recordedPolicies, [.regular, .accessory],
+            "Демоут только после закрытия последнего окна"
+        )
+    }
+
+    func test_setSettingsWindowPresentedFalseFromDefault_isNoOp() {
+        controller.setSettingsWindowPresented(false)
+        XCTAssertTrue(
+            recordedPolicies.isEmpty,
+            "Default state is already not-presented; no state change — no apply"
+        )
+    }
 }
