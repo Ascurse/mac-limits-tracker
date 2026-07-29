@@ -8,6 +8,7 @@
 /MacLimitsTracker.app
 /dist
 /.codegraph
+/.fastembed_cache
 
 # Beads / Dolt files (added by bd init)
 .dolt/
