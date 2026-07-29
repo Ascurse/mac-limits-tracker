@@ -20,3 +20,6 @@
 
 # OpenCode session state
 .omo/
+
+# Кэш моделей fastembed (ygrep) — ~100 МБ бинарников, качается заново
+.fastembed_cache/
