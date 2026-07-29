@@ -205,6 +205,17 @@ public enum PopupContentBuilder {
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
         let cutoff = now.addingTimeInterval(-24 * 3600)
+
+        var groupedHistory: [Int: [SparklinePoint]] = [:]
+        for sample in history where sample.fetchedAt >= cutoff {
+            let point = SparklinePoint(time: sample.fetchedAt, usedPercent: sample.usedPercent)
+            groupedHistory[sample.windowMins, default: []].append(point)
+        }
+
+        for (windowMins, points) in groupedHistory {
+            groupedHistory[windowMins] = points.sorted { $0.time < $1.time }
+        }
+
         return windows.flatMap { w -> [PopupRow] in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
             let row = windowRow(short: labels.short, long: labels.long,
@@ -213,10 +224,9 @@ public enum PopupContentBuilder {
                                 unavailable: "\(labels.long) usage unavailable",
                                 thresholds: thresholds)
             guard w.usedPercent != nil, let durationMins = w.windowDurationMins else { return [row] }
-            let points = history
-                .filter { $0.windowMins == durationMins && $0.fetchedAt >= cutoff }
-                .sorted { $0.fetchedAt < $1.fetchedAt }
-                .map { SparklinePoint(time: $0.fetchedAt, usedPercent: $0.usedPercent) }
+
+            let points = groupedHistory[durationMins] ?? []
+
             guard !points.isEmpty else { return [row] }
             let sparkline = SparklineContent(windowMins: durationMins,
                                              shortLabel: labels.short, points: points)
