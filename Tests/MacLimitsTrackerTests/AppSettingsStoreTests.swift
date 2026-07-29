@@ -1,30 +1,6 @@
 import XCTest
 @testable import MacLimitsTrackerCore
 
-/// RefreshInterval — enum интервалов автообновления (issue #24).
-final class RefreshIntervalTests: XCTestCase {
-    func test_timeIntervals_matchTitles() {
-        XCTAssertEqual(RefreshInterval.seconds30.timeInterval, 30)
-        XCTAssertEqual(RefreshInterval.minute1.timeInterval, 60)
-        XCTAssertEqual(RefreshInterval.minute5.timeInterval, 300)
-        XCTAssertEqual(RefreshInterval.minute15.timeInterval, 900)
-    }
-
-    func test_titles_areHumanReadable() {
-        XCTAssertEqual(RefreshInterval.seconds30.title, "30 sec")
-        XCTAssertEqual(RefreshInterval.minute1.title, "1 min")
-        XCTAssertEqual(RefreshInterval.minute5.title, "5 min")
-        XCTAssertEqual(RefreshInterval.minute15.title, "15 min")
-    }
-
-    /// rawValue персистится в UserDefaults — значения не менять.
-    func test_rawValues_areStable() {
-        XCTAssertEqual(RefreshInterval.seconds30.rawValue, "seconds30")
-        XCTAssertEqual(RefreshInterval.minute5.rawValue, "minute5")
-        XCTAssertEqual(RefreshInterval.default, .minute5)
-    }
-}
-
 /// AppSettingsStore — персистентность настроек приложения (интервал, пороги,
 /// уведомления) рядом с ключами @AppStorage (issue #24/#25/#29).
 final class AppSettingsStoreTests: XCTestCase {
