@@ -48,6 +48,7 @@ struct ProvidersSettingsSection: View {
             .buttonStyle(.borderless)
             .controlSize(controlSize)
             .disabled(isFirst)
+            .help("Move \(entry.descriptor.displayName) up")
             .accessibilityLabel("Move \(entry.descriptor.displayName) up")
 
             Button {
@@ -58,6 +59,7 @@ struct ProvidersSettingsSection: View {
             .buttonStyle(.borderless)
             .controlSize(controlSize)
             .disabled(isLast)
+            .help("Move \(entry.descriptor.displayName) down")
             .accessibilityLabel("Move \(entry.descriptor.displayName) down")
         }
     }
