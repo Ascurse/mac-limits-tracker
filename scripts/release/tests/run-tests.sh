@@ -342,7 +342,7 @@ NOTARY_PROFILE="test-profile" \
 assert_exit_zero "T4: print-auth-method bypasses preflight with missing app"
 assert_equal "T4: profile auth method resolves" "profile" "$(cat "$SCRATCH/stdout")"
 
-NOTARY_KEY="-----BEGIN PRIVATE KEY-----" \
+NOTARY_KEY="P8-PLACEHOLDER-KEY-CONTENT" \
 NOTARY_KEY_ID="KID1234567" \
 NOTARY_ISSUER="00000000-0000-0000-0000-000000000000" \
     run_cmd "$SIGN_SCRIPT" --print-auth-method
@@ -350,7 +350,7 @@ assert_exit_zero "T4: API key auth method resolves"
 assert_equal "T4: api-key auth method resolves" "api-key" "$(cat "$SCRATCH/stdout")"
 
 APPLE_ID="test@example.com" \
-APPLE_APP_PASSWORD="abcd-efgh-ijkl-mnop" \
+APPLE_APP_PASSWORD="SENTINEL-APP-SPECIFIC-PASSWORD" \
 APPLE_TEAM_ID="TEST1234567" \
     run_cmd "$SIGN_SCRIPT" --print-auth-method
 assert_exit_zero "T4: Apple ID auth method resolves"
