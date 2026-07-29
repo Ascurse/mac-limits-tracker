@@ -21,6 +21,26 @@
 
 ---
 
+## 2026-07-29 — Стабильная Developer ID-подпись нужна, чтобы keychain ACL-промпт не возвращался
+
+**Симптом:** После каждой чистой пересборки `dist/MacLimitsTracker.app` снова появляется системный диалог с просьбой разрешить доступ к записи Keychain `Claude Code-credentials`, хотя пользователь уже нажимал «Always Allow» на предыдущем билде.
+
+**Причина:** Ad-hoc-подпись меняется при каждой сборке, поэтому macOS считает каждый билд новым приложением и не применяет старое ACL-правило. Developer ID-подпись остаётся стабильной в рамках одного identity, поэтому «Always Allow» работает на всю сборку.
+
+**Обход:** Собирать релиз через `scripts/release/sign-and-notarize.sh` со stable Developer ID identity; локальные ad-hoc-сборки продолжают показывать промпт — это ожидаемо, в них каждый раз нажимать «Always Allow» заново.
+
+**Где это в коде:** [scripts/release/sign-and-notarize.sh](../../scripts/release/sign-and-notarize.sh) (`sign_app`, выбор `IDENTITY` в preflight).
+
+## 2026-07-29 — Release-zip должен собираться после stapling, иначе ticket не попадёт в артефакт
+
+**Симптом:** Пользователь скачивает релизный zip, Gatekeeper при офлайн-проверке не находит notarization ticket и либо падает на online-проверку, либо блокирует запуск без сети.
+
+**Причина:** `stapler staple` прикрепляет ticket к .app внутри бандла, а не к zip. Если zip создать до stapling, внутри него окажется непрошитый .app.
+
+**Обход:** Сначала подписать и верифицировать .app, отправить на notarization, дождаться Accepted, выполнить `stapler staple`, затем уже собирать `MacLimitsTracker.zip` для публикации. Notary-zip используется только для загрузки и отбрасывается.
+
+**Где это в коде:** [scripts/release/sign-and-notarize.sh](../../scripts/release/sign-and-notarize.sh) (порядок `notarize_app` → `staple_app` → `release_zip`).
+
 ## 2026-07-29 — AX-автоматизация MenuBarExtra-popup'а нестабильна: toggle-клик, гонки `entire contents`, порядок окон (bd mac-limits-tracker-3ip.6)
 
 **Симптом:** при GUI-QA через `osascript` System Events клик по `menu bar item 1 of menu bar 2` то открывает, то закрывает popup; `entire contents of window 1` периодически возвращает пустое или частичное дерево (0 кнопок при живом popup); при открытом main window поиск кнопок popup'а в `window 1` падает, хотя popup на экране.
@@ -28,7 +48,7 @@
 **Обход:** открытие — цикл «клик → poll до появления окна с subrole `AXSystemDialog`, до 3 попыток»; искать элементы по всем окнам с фильтром `subrole = AXSystemDialog`, а не в `window 1`; кнопки находить по `help`-атрибуту (AX `name` у SwiftUI-кнопок в popup пуст — текст лежит в дочерних `AXStaticText`); поиск — retry до ~4 с; скриншоты делать без кражи фокуса другим приложением — popup гаснет при потере key (это же и есть механизм его авто-дисмисса при открытии main/Settings окна).
 **Где это в коде:** [Sources/MacLimitsTracker/UI/StatusBarView.swift](../../Sources/MacLimitsTracker/UI/StatusBarView.swift) (контент `MenuBarExtra(.window)`); smoke-матрица coexistence (3ip.8) и rollout gate (3ip.11) автоматизируют те же поверхности.
 
-## 2026-07-28 — Свежий ad-hoc `.app` вызывает keychain ACL-диалог «Claude Code-credentials» при первом refresh (bd mac-limits-tracker-3ip.7)
+## 2026-07-28 — Свежий ad-hoc `.app` вызывает keychain ACL-диалог «Claude Code-credentials» при первом refresh [пересмотрено: 2026-07-29] (bd mac-limits-tracker-3ip.7)
 
 **Симптом:** при первом запуске собранного `dist/MacLimitsTracker.app` и нажатии «Refresh» macOS показывает системный диалог с просьбой разрешить доступ к записи Keychain `Claude Code-credentials`; без подтверждения Claude-провайдер не может достать токен.
 **Причина:** ad-hoc-подпись меняется при каждой пересборке, и keychain ACL не узнаёт новый бинарь. То же самое уже задокументировано для `VerifyCli` (2026-07-24), но касается и готового `.app`.
