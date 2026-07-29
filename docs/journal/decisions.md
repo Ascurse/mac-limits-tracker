@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-07-29 — Релизный pipeline: подпись Developer ID, notarization, staple, fail-closed
+
+**Контекст:** Релизы собирались ad-hoc, подпись менялась каждую пересборку, macOS переспрашивал доступ к Keychain `Claude Code-credentials`, а Gatekeeper блокировал скачанное приложение. Нужен pipeline, при котором неподписанный артефакт никогда не публикуется.
+**Решение:** [scripts/release/sign-and-notarize.sh](../../scripts/release/sign-and-notarize.sh) работает fail-closed: preflight проверяет инструменты, бандл, `DEVELOPER_ID_APPLICATION` и notary-авторизацию, и при любой проблеме падает до мутации артефактов. Подпись корня бандла без `--deep`, hardened runtime через `--options runtime` без entitlements-файла; sandbox отключён. Notary-zip используется только для отправки и отбрасывается; release-zip собирается уже после `stapler staple` из .app. Приоритет авторизации: API key (`NOTARY_KEY`/`NOTARY_KEY_ID`/`NOTARY_ISSUER`) для CI, `NOTARY_PROFILE` локально, тройка Apple ID — fallback.
+**Почему:** Ad-hoc-подпись нестабильна, поэтому ACL-промпт возвращается после каждой чистой пересборки; стабильная Developer ID-подпись позволяет пользователю нажать «Always Allow» один раз на сборку. `keychain-access-groups` не дают доступ к чужому элементу `Claude Code-credentials`, вопрос решается не entitlements, а стабильной подписью. Sandbox запрещён, потому что приложение читает `~/.claude`, `~/.codex`, `~/.kimi-code` и запускает subprocesses; entitlements не нужны, так как hardened runtime — это флаг, а не entitlement. `--deep` избыточен, потому что в бандле нет вложенного кода, а zip до stapling не содержал бы notarization ticket.
+**Последствия:** [.github/workflows/release.yml](../../.github/workflows/release.yml) импортирует сертификат во временный keychain, проходит gate `swift test` и запускает скрипт, публикуя только stapled-артефакт; старый standalone-шаг неподписанного zip удалён. Gate `swift test` на уровне PR пока отсутствует — отслеживается отдельно. Обновление пользовательской документации в README — отдельная задача.
+
 ## 2026-07-28 — Единая effective-политика активации: LaunchMode × два окна, дедуп через appliedPolicy (bd mac-limits-tracker-3ip.5)
 
 **Контекст:** Settings scene стала вторым окном через `WindowPresentationController`: политика должна оставаться `.regular`, пока открыто хотя бы одно окно (main ИЛИ settings), а не дёргаться при закрытии одного из двух.
