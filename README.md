@@ -1,6 +1,6 @@
 # mac-limits-tracker
 
-A macOS menu-bar app that shows the current Claude Code, Codex CLI and Kimi Code plan / usage state at a glance.
+A native macOS app that shows the current Claude Code, Codex CLI and Kimi Code plan / usage state in the menu bar, a regular desktop window and an optional desktop widget.
 
 ![platform](https://img.shields.io/badge/platform-macOS%2014%2B-blue)
 ![swift](https://img.shields.io/badge/swift-5.10%2B-orange)
@@ -21,6 +21,17 @@ Clicking it opens the pop-up — provider plans, live windows, and the display /
 </p>
 
 > The account e-mail is blurred in this screenshot only; the live pop-up shows it in full.
+
+## App surfaces
+
+The app has four surfaces backed by the same live state and persisted settings:
+
+- **Menu-bar popup** — always available from the gauge icon; optimized for a quick status check.
+- **Desktop window** — click **Open Limits Tracker** in the popup. In a bundled `.app`, **Cmd-0** or **Limits Tracker → Open Limits Tracker** opens or focuses the same singleton window.
+- **Settings** — click **Settings…** in the popup, use **Cmd-,**, or choose the standard app Settings command. The native Settings window exposes the same controls as the popup footer and the desktop window's **Settings** disclosure.
+- **Desktop widget** — enable **Desktop widget** from any settings surface. It is a separate non-activating panel that stays below normal windows and can appear on every Space.
+
+`MacLimitsTrackerApp` owns one shared `LimitsViewModel`; opening or closing a surface does not create another polling loop or reset provider state. The menu-bar popup and desktop window share the same `ProviderOverview` rules, while the widget keeps its intentionally compact rendering.
 
 ## What it shows
 
@@ -66,18 +77,18 @@ Every successful refresh appends one sample per (provider, window) to a local hi
 
 ## Notifications
 
-Turning on **Notifications** in the popup footer (off by default) asks macOS for notification permission and starts watching every enabled provider's windows for two kinds of events:
+Turning on **Notifications** from any settings surface (off by default) asks macOS for notification permission and starts watching every enabled provider's windows for two kinds of events:
 
 - **Threshold crossed** — fires once when a window's remaining % drops into the warning zone (default ≤ 40%) or critical zone (default ≤ 15%); recovering above a zone re-arms it so a later re-entry notifies again. Title: `"<Provider>: <Window> window low"` / `"...critical"`, body: `"<N>% remaining"`.
 - **Window reset** — fires when a window's reset time changes to a new value. Title: `"<Provider>: <Window> window reset"`, body: `"Limit window has reset"`.
 
-Both warning and critical thresholds are configurable from a fixed set of options in the footer ("Warning at" / "Critical at"); critical is always kept below warning. Dedup state is kept in memory only — restarting the app can produce one repeat notification for a window that's already past its threshold.
+Both warning and critical thresholds are configurable from a fixed set of options ("Warning at" / "Critical at"); critical is always kept below warning. Dedup state is kept in memory only — restarting the app can produce one repeat notification for a window that's already past its threshold.
 
 Notifications require the app to run as a proper `.app` bundle (`./make-app.sh`); they are a silent no-op under `swift run`.
 
 ## Settings
 
-Everything below lives in the popup footer and persists across restarts:
+The controls below are shared by the popup footer, the desktop window's **Settings** disclosure and the native Settings window. Changes appear in every surface immediately and persist across restarts:
 
 | Control | Options | Default |
 |---|---|---|
@@ -94,7 +105,7 @@ Everything below lives in the popup footer and persists across restarts:
 
 ## Desktop widget
 
-Besides the menu-bar popup there is an optional always-on-desktop panel: enable **Desktop widget** in the popup footer. It floats at desktop level on all Spaces, shows one row per window with data for every *enabled* provider (not just Claude/Codex) as progress bars, can be dragged anywhere (position persists across restarts via native window frame autosave), and refreshes together with the menu-bar data. It does not show sparklines or severity tinting.
+Besides the menu-bar popup there is an optional always-on-desktop panel: enable **Desktop widget** from any settings surface. It floats at desktop level on all Spaces, shows one row per window with data for every *enabled* provider (not just Claude/Codex) as progress bars, can be dragged anywhere (position persists across restarts via native window frame autosave), and refreshes together with the menu-bar data. It does not show sparklines or severity tinting.
 
 ## Data sources
 
@@ -112,15 +123,9 @@ The Claude.ai OAuth access token is read from the Keychain service `Claude Code-
 
 ## Install
 
-Download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The binary is universal (Apple Silicon + Intel).
+Download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The current release workflow publishes a universal Apple Silicon + Intel artifact only after tests, Developer ID signing, notarization, stapling and Gatekeeper assessment all succeed.
 
-The app is **not signed with an Apple Developer certificate**, so on first launch Gatekeeper will block it. Either right-click the app → **Open** → **Open**, or remove the quarantine attribute:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/MacLimitsTracker.app
-```
-
-Releases are built by GitHub Actions: pushing a `v*` tag (e.g. `v0.2.0`) builds the universal binary, assembles the `.app` and publishes a release with the zip attached.
+The workflow is fail-closed: missing signing or notarization credentials produce no release artifact. If the Releases page has no signed build for the version you need, use the source-build path below instead of treating an unsigned archive as a production release.
 
 ## Build & run
 
@@ -132,20 +137,58 @@ Releases are built by GitHub Actions: pushing a `v*` tag (e.g. `v0.2.0`) builds 
 - Kimi Code CLI logged in (`~/.kimi-code/credentials/kimi-code.json` present with a valid refresh token) to enable the Kimi section — optional, the provider is simply hidden without it
 
 ### Dev (no `.app` bundle)
+
 ```bash
 swift run MacLimitsTracker
 ```
-This drops you into a SwiftUI `MenuBarExtra` immediately. The Dock icon is hidden automatically (accessory activation policy applied at runtime).
 
-### Production `.app`
+This starts in hybrid mode: the `MenuBarExtra` appears immediately and the process remains an accessory app without a Dock icon. Click **Open Limits Tracker** or **Settings…** in the popup to promote it to a regular app while a window is open; after the last regular window closes it returns to menu-bar-only mode.
+
+### Local `.app` bundle
+
 ```bash
 ./make-app.sh
 open dist/MacLimitsTracker.app
 ```
-`make-app.sh` runs `swift build -c release` and assembles `dist/MacLimitsTracker.app` with an `Info.plist` (bundle id `dev.ascurse.MacLimitsTracker`). The bundled app runs as a regular desktop app (Dock/Cmd-Tab) via runtime activation policy.
+
+`make-app.sh` runs `swift build -c release` and assembles an ad-hoc `dist/MacLimitsTracker.app` with bundle id `dev.ascurse.MacLimitsTracker`. A bundled app uses persistent-regular mode: the Dock icon, Cmd-Tab entry and app menus remain available while the menu-bar popup and optional widget continue to work.
+
+This local bundle is not a distributable release. If Gatekeeper quarantines an ad-hoc bundle copied from another machine, right-click it and choose **Open**, or remove quarantine explicitly:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MacLimitsTracker.app
+```
+
+### Signed and notarized release
+
+The release script requires:
+
+- a paid Apple Developer Program membership and a `Developer ID Application` certificate installed in the keychain;
+- `DEVELOPER_ID_APPLICATION` set to the complete signing identity;
+- exactly one notarization method: `NOTARY_PROFILE`, the API-key trio `NOTARY_KEY` / `NOTARY_KEY_ID` / `NOTARY_ISSUER`, or the Apple ID trio `APPLE_ID` / `APPLE_APP_PASSWORD` / `APPLE_TEAM_ID`.
+
+For a local release, a keychain profile created with `xcrun notarytool store-credentials` keeps secrets out of shell history:
+
+```bash
+./make-app.sh
+export DEVELOPER_ID_APPLICATION='Developer ID Application: Example Name (TEAMID)'
+export NOTARY_PROFILE='mac-limits-tracker'
+./scripts/release/sign-and-notarize.sh \
+  --app dist/MacLimitsTracker.app \
+  --out dist
+```
+
+Success produces a signed, notarized and stapled app plus `dist/MacLimitsTracker.zip`. Run `./scripts/release/sign-and-notarize.sh --help` for preflight, dry-run and local identity-override options. GitHub Actions additionally needs `MACOS_CERT_P12_BASE64`, `MACOS_CERT_PASSWORD`, `DEVELOPER_ID_APPLICATION` and exactly one complete notarization credential set; pushing a `v*` tag starts the workflow.
+
+### Runtime permission prompts
+
+- **Claude Code Keychain** — the first refresh from a newly built ad-hoc app may ask for access to `Claude Code-credentials`. Choose **Always Allow** if you trust the local build. Ad-hoc signatures change on rebuild, so the prompt can return; a stable Developer ID signature avoids that repeated ACL prompt.
+- **Notifications** — enabling notifications for the first time shows the standard macOS authorization prompt. The feature is unavailable under `swift run` because notification delivery requires an app bundle.
+- **Launch at login** — macOS can register the app but leave it in **requires approval** state until the user confirms it under **System Settings → General → Login Items**.
 
 ### Run on boot
-Toggle **Launch at login** in the popup footer (uses `SMAppService`, macOS 13+). Alternatively, add `dist/MacLimitsTracker.app` to **System Settings → General → Login Items → Open at login** manually.
+
+Toggle **Launch at login** from any settings surface (uses `SMAppService`). Alternatively, add `dist/MacLimitsTracker.app` to **System Settings → General → Login Items → Open at login** manually.
 
 ## Project layout
 
@@ -170,7 +213,10 @@ Sources/
     App/AppDelegate.swift
     App/LaunchAtLoginManager.swift
     Notifications/NotificationManager.swift
-    UI/StatusBarView.swift              # theme dispatcher
+    UI/StatusBarView.swift              # menu-bar popup + desktop/settings bridges
+    UI/DesktopWindowView.swift          # singleton regular desktop window
+    UI/ProviderOverview.swift           # shared popup/desktop provider rendering
+    UI/Settings/SettingsRootView.swift  # native Settings scene
     UI/SystemStatusView.swift
     UI/TerminalStatusView.swift
     UI/PhosphorStatusView.swift
