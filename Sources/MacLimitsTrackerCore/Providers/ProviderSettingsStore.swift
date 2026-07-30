@@ -47,25 +47,39 @@ public final class ProviderSettingsStore {
 }
 
 extension [ProviderSetting] {
+    /// Примитив перестановки: удаляет `ids` (сохраняя их относительный порядок) и
+    /// вставляет блоком перед элементом `targetId`. `targetId == nil` либо id, которого
+    /// нет в списке — перестановка в конец. Общая основа для movedUp/movedDown и UI
+    /// drag-переупорядочивания (bd mac-limits-tracker-med.1).
+    public func reordered(ids: [String], before targetId: String?) -> [ProviderSetting] {
+        let movingIds = Set(ids)
+        guard !movingIds.isEmpty else { return self }
+        let byId = Dictionary(uniqueKeysWithValues: map { ($0.id, $0) })
+        let moved = ids.compactMap { byId[$0] }
+        guard !moved.isEmpty else { return self }
+
+        var remaining = filter { !movingIds.contains($0.id) }
+        guard let targetId, let targetIndex = remaining.firstIndex(where: { $0.id == targetId }) else {
+            remaining.append(contentsOf: moved)
+            return remaining
+        }
+        remaining.insert(contentsOf: moved, at: targetIndex)
+        return remaining
+    }
+
     /// Переставляет элемент с данным id на одну позицию к началу списка.
     /// Если элемент уже первый или id не найден — массив не меняется.
     public func movedUp(id: String) -> [ProviderSetting] {
-        moved(id: id, by: -1)
+        guard let index = firstIndex(where: { $0.id == id }), index > 0 else { return self }
+        return reordered(ids: [id], before: self[index - 1].id)
     }
 
     /// Переставляет элемент с данным id на одну позицию к концу списка.
     /// Если элемент уже последний или id не найден — массив не меняется.
     public func movedDown(id: String) -> [ProviderSetting] {
-        moved(id: id, by: 1)
-    }
-
-    private func moved(id: String, by offset: Int) -> [ProviderSetting] {
-        guard let index = firstIndex(where: { $0.id == id }) else { return self }
-        let newIndex = index + offset
-        guard indices.contains(newIndex) else { return self }
-        var copy = self
-        copy.swapAt(index, newIndex)
-        return copy
+        guard let index = firstIndex(where: { $0.id == id }), index < count - 1 else { return self }
+        let targetId = index + 2 < count ? self[index + 2].id : nil
+        return reordered(ids: [id], before: targetId)
     }
 
     /// Включает/выключает элемент с данным id, остальные не трогает.

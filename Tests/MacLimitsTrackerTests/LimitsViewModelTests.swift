@@ -256,6 +256,108 @@ final class LimitsViewModelProviderSettingsTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 1_000_000)
         }
     }
+
+    // MARK: - reorderProviders / resetProviderOrder (bd mac-limits-tracker-med.1)
+
+    func test_reorderProviders_updatesStatesOrderAndPersists() {
+        let store = ProviderSettingsStore(defaults: defaults)
+        let vm = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), StubProvider(id: "codex"), StubProvider(id: "kimi")],
+            settingsStore: store,
+            historyStore: historyStore
+        )
+        vm.reorderProviders(["kimi"], before: "claude")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["kimi", "claude", "codex"])
+
+        let vm2 = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), StubProvider(id: "codex"), StubProvider(id: "kimi")],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+        XCTAssertEqual(vm2.states.map(\.descriptor.id), ["kimi", "claude", "codex"],
+                       "перестановка должна пережить перезапуск")
+    }
+
+    func test_reorderProviders_disabledProviderStaysDisabledAtRequestedOrder() {
+        let store = ProviderSettingsStore(defaults: defaults)
+        store.save([
+            ProviderSetting(id: "claude", isEnabled: true),
+            ProviderSetting(id: "codex", isEnabled: false),
+            ProviderSetting(id: "kimi", isEnabled: true)
+        ])
+        let vm = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), StubProvider(id: "codex"), StubProvider(id: "kimi")],
+            settingsStore: store,
+            historyStore: historyStore
+        )
+        vm.reorderProviders(["kimi"], before: "claude")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "claude", "codex"])
+        XCTAssertEqual(vm.providerSettings.first { $0.id == "codex" }?.isEnabled, false)
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["kimi", "claude"],
+                       "codex остаётся выключенным и не появляется в states")
+    }
+
+    func test_resetProviderOrder_restoresCanonicalOrder_preservingDisabledFlags() {
+        let store = ProviderSettingsStore(defaults: defaults)
+        store.save([
+            ProviderSetting(id: "kimi", isEnabled: false),
+            ProviderSetting(id: "codex", isEnabled: true),
+            ProviderSetting(id: "claude", isEnabled: true)
+        ])
+        let vm = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), StubProvider(id: "codex"), StubProvider(id: "kimi")],
+            settingsStore: store,
+            historyStore: historyStore
+        )
+        vm.resetProviderOrder()
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["claude", "codex", "kimi"],
+                       "порядок должен вернуться к каноническому (порядок реестра)")
+        XCTAssertEqual(vm.providerSettings.first { $0.id == "kimi" }?.isEnabled, false,
+                       "выключенность должна пережить сброс порядка")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "codex"],
+                       "выключенный kimi не должен появиться в states после сброса")
+
+        let vm2 = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), StubProvider(id: "codex"), StubProvider(id: "kimi")],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+        XCTAssertEqual(vm2.providerSettings.map(\.id), ["claude", "codex", "kimi"],
+                       "сброс должен пережить перезапуск")
+        XCTAssertEqual(vm2.providerSettings.first { $0.id == "kimi" }?.isEnabled, false)
+    }
+
+    /// Гонка: та же дисциплина отмены in-flight refresh, что и у
+    /// setProviderEnabled/moveProviderUp — reorderProviders переиспользует
+    /// applyProviderSettingsChange, поэтому устаревшая задача не должна
+    /// перезаписать states после перестановки.
+    func test_reorderProvidersWhileStaleRefreshInFlight_appliesNewOrderNotStale() async {
+        let gate = FetchGate(isOpen: true)
+        let store = ProviderSettingsStore(defaults: defaults)
+        let vm = LimitsViewModel(
+            providers: [StubProvider(id: "claude"), GatedProvider(id: "codex", gate: gate)],
+            settingsStore: store,
+            historyStore: historyStore
+        )
+
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "codex"])
+
+        await gate.close()
+        vm.refresh()
+        await waitUntil { vm.isRefreshing }
+
+        vm.reorderProviders(["codex"], before: "claude")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["codex", "claude"],
+                       "новый порядок должен применяться немедленно, до завершения устаревшего refresh")
+
+        await gate.open()
+        await waitUntil { !vm.isRefreshing }
+
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["codex", "claude"],
+                       "устаревшая задача не должна откатить порядок")
+    }
 }
 
 /// Изменяемый флаг доступности для `DynamicProviderSpec.isAvailable` (@Sendable-замыкание).
@@ -435,6 +537,69 @@ final class LimitsViewModelDynamicProvidersTests: XCTestCase {
         XCTAssertEqual(kimi?.isEnabled, false, "выключенность kimi должна пережить чужой save, пока его не было")
         XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "claude", "codex"],
                        "позиция kimi должна пережить чужой save, пока его не было")
+    }
+
+    /// Регрессия (bd mac-limits-tracker-med.1): reorderProviders вызывает тот же
+    /// applyProviderSettingsChange, что и setProviderEnabled/moveProviderUp — persisted
+    /// запись отсутствующего kimi не должна теряться при перестановке видимых провайдеров.
+    func test_dynamicProvider_reorderWhileAbsent_preservesPersistedEntry() async {
+        let flag = AvailabilityFlag(true)
+        let vm = makeVM(flag: flag, providers: [StubProvider(id: "claude"), StubProvider(id: "codex")])
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        vm.setProviderEnabled(false, id: "kimi")
+        vm.moveProviderUp(id: "kimi")
+        vm.moveProviderUp(id: "kimi")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "claude", "codex"])
+
+        flag.value = false
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        vm.reorderProviders(["codex"], before: "claude")
+
+        flag.value = true
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        let kimi = vm.providerSettings.first { $0.id == "kimi" }
+        XCTAssertEqual(kimi?.isEnabled, false, "выключенность kimi должна пережить reorder, пока его не было")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "codex", "claude"],
+                       "позиция kimi должна пережить reorder видимых провайдеров, пока его не было")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["codex", "claude"],
+                       "kimi остаётся выключенным и не появляется в states после возвращения")
+    }
+
+    /// Регрессия (bd mac-limits-tracker-med.1): resetProviderOrder не должен
+    /// стирать persisted-запись отсутствующего kimi, как и любой другой save.
+    func test_dynamicProvider_resetWhileAbsent_preservesPersistedEntry() async {
+        let flag = AvailabilityFlag(true)
+        let vm = makeVM(flag: flag, providers: [StubProvider(id: "claude"), StubProvider(id: "codex")])
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        vm.setProviderEnabled(false, id: "kimi")
+        vm.moveProviderUp(id: "kimi")
+        vm.moveProviderUp(id: "kimi")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["kimi", "claude", "codex"])
+
+        flag.value = false
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        vm.resetProviderOrder()
+
+        flag.value = true
+        vm.refresh()
+        await waitUntil { !vm.isRefreshing }
+
+        let kimi = vm.providerSettings.first { $0.id == "kimi" }
+        XCTAssertEqual(kimi?.isEnabled, false, "выключенность kimi должна пережить reset, пока его не было")
+        XCTAssertEqual(vm.providerSettings.map(\.id), ["claude", "codex", "kimi"],
+                       "kimi должен вернуться в конце (канонический порядок), оставаясь выключенным")
+        XCTAssertEqual(vm.states.map(\.descriptor.id), ["claude", "codex"],
+                       "kimi остаётся выключенным и не появляется в states после возвращения")
     }
 }
 

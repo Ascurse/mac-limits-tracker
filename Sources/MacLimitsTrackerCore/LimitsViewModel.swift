@@ -277,6 +277,24 @@ public final class LimitsViewModel: ObservableObject {
         applyProviderSettingsChange()
     }
 
+    /// Применяет результат drag-переупорядочивания (список видимых id) к полному
+    /// `providerSettings`: перемещает `ids` блоком перед `targetId` (в конец при
+    /// `nil`/неизвестном id), не трогая позицию и выключенность скрытых
+    /// dynamic-провайдеров, отсутствующих среди `ids` (bd mac-limits-tracker-med.1).
+    public func reorderProviders(_ ids: [String], before targetId: String?) {
+        providerSettings = providerSettings.reordered(ids: ids, before: targetId)
+        applyProviderSettingsChange()
+    }
+
+    /// Сбрасывает порядок к каноническому (реестр + id dynamic-спек, тот же union,
+    /// что и в settingsIds), сохраняя выключенность каждого провайдера как есть.
+    public func resetProviderOrder() {
+        let canonicalIds = Self.settingsIds(providers: allProviders, specs: dynamicProviders)
+        let enabledById = Dictionary(uniqueKeysWithValues: providerSettings.map { ($0.id, $0.isEnabled) })
+        providerSettings = canonicalIds.map { ProviderSetting(id: $0, isEnabled: enabledById[$0] ?? true) }
+        applyProviderSettingsChange()
+    }
+
     /// Персистит новые настройки и пересобирает `states`: существующие снапшоты
     /// сохраняются (не нужно ждать refresh ради переупорядочивания/выключения),
     /// вновь включённый провайдер получает `snapshot: nil` до ближайшего refresh().
