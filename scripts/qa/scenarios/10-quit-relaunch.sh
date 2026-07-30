@@ -4,7 +4,8 @@
 # EXPECTED RESULTS:
 # - Quitting the app removes the process within 5 seconds and leaves no leaked
 #   windows owned by the dead PID (including negative-layer widget panels).
-# - A clean relaunch preserves all UserDefaults (pre/post defaults diff is empty).
+# - A clean relaunch preserves app-owned UserDefaults; macOS-managed window
+#   frames may change when the system chooses another display.
 # - Widget visibility matches the persisted showDesktopWidget setting.
 # - Activation policy stays regular and the app does not crash.
 
@@ -48,8 +49,18 @@ wait_seconds 3
 
 defaults export dev.ascurse.MacLimitsTracker - > "$(evidence_file defaults-post-relaunch.txt)" 2>/dev/null || true
 
+defaults_pre_normalized="$(evidence_file defaults-pre-quit-normalized.plist)"
+defaults_post_normalized="$(evidence_file defaults-post-relaunch-normalized.plist)"
+cp -f "$(evidence_file defaults-pre-quit.txt)" "$defaults_pre_normalized"
+cp -f "$(evidence_file defaults-post-relaunch.txt)" "$defaults_post_normalized"
+for defaults_file in "$defaults_pre_normalized" "$defaults_post_normalized"; do
+    plutil -remove 'NSWindow Frame DesktopWidget' "$defaults_file" 2>/dev/null || true
+    plutil -remove 'NSWindow Frame com_apple_SwiftUI_Settings_window' "$defaults_file" 2>/dev/null || true
+    plutil -remove 'NSWindow Frame main' "$defaults_file" 2>/dev/null || true
+done
+
 diff_file="$(evidence_file defaults-diff.txt)"
-diff -u "$(evidence_file defaults-pre-quit.txt)" "$(evidence_file defaults-post-relaunch.txt)" > "$diff_file" 2>&1 || true
+diff -u "$defaults_pre_normalized" "$defaults_post_normalized" > "$diff_file" 2>&1 || true
 if [[ ! -s "$diff_file" ]]; then
     _qa_pass "defaults_preserved_across_relaunch" "defaults export diff is empty"
 else

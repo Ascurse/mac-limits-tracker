@@ -2,7 +2,7 @@
 # scripts/qa/scenarios/07-network-failure.sh
 #
 # EXPECTED RESULTS:
-# - Launching the binary directly with poisoned proxy variables still produces a
+# - Launching the binary directly with an isolated HOME and minimal PATH produces a
 #   single responsive MacLimitsTracker process.
 # - The app shows an error state in the popup or menu-bar title but does not
 #   crash (no new .ips reports newer than the watermark).
@@ -21,21 +21,22 @@ mtimes_log="$(evidence_file history-mtimes.log)"
 pre_launch_mtime="$(stat -f %m "$history_file" 2>/dev/null || echo 0)"
 printf 'pre-launch: %s\n' "$pre_launch_mtime" > "$mtimes_log"
 
-# Quit the clean instance and relaunch via the direct binary with poisoned proxy.
+# Quit the clean instance and relaunch without provider CLI/auth files.
 log_action "network-failure: quitting clean instance"
 quit_app || true
 _qa_wait_for_process_exit 10 0.5 || true
 
 binary_path="$(_qa_app_path)/Contents/MacOS/MacLimitsTracker"
-log_action "network-failure: launching binary directly with HTTPS_PROXY/HTTP_PROXY=127.0.0.1:1"
-HTTPS_PROXY=127.0.0.1:1 HTTP_PROXY=127.0.0.1:1 "$binary_path" >/dev/null 2>&1 &
+isolated_home="$(mktemp -d /tmp/mac-limits-tracker-qa-home.XXXXXX)"
+log_action "network-failure: launching binary with isolated HOME and minimal PATH"
+HOME="$isolated_home" PATH="/usr/bin:/bin" "$binary_path" >/dev/null 2>&1 &
 disown
 
 _qa_wait_for_process 15 0.5
 wait_seconds 5
 
-# Wait up to 45 seconds for refresh attempts to fail against the poisoned proxy.
-log_action "network-failure: waiting 45s for refresh attempts to fail"
+# Wait up to 45 seconds for provider discovery/refresh attempts to fail.
+log_action "network-failure: waiting 45s for isolated refresh attempts to fail"
 attempt=1
 while [ "$attempt" -le 9 ]; do
     wait_seconds 5
@@ -48,9 +49,9 @@ printf 'post-failure: %s\n' "$post_failure_mtime" >> "$mtimes_log"
 assert_single_process
 
 if popup_open; then
-    _qa_pass "popup_responsive_under_failure" "popup opened while network was poisoned"
+    _qa_pass "popup_responsive_under_failure" "popup opened under isolated provider failure"
 else
-    _qa_fail "popup_responsive_under_failure" "popup did not open under poisoned proxy"
+    _qa_fail "popup_responsive_under_failure" "popup did not open under isolated provider failure"
 fi
 
 _qa_dump_popup_contents_to_evidence "popup-failure-contents"
@@ -74,9 +75,14 @@ close_window "^Limits Tracker$"
 screenshot "error-state"
 
 # Relaunch cleanly and wait for a successful refresh.
-log_action "network-failure: quitting poisoned instance and relaunching clean"
+log_action "network-failure: quitting isolated instance and relaunching clean"
 quit_app
 _qa_wait_for_process_exit 10 0.5
+if [[ "$isolated_home" == /tmp/mac-limits-tracker-qa-home.* ]]; then
+    rm -rf -- "$isolated_home"
+else
+    _qa_fail "isolated_home_cleanup" "refusing unexpected cleanup path: $isolated_home"
+fi
 
 open -a "$(_qa_app_path)" >/dev/null 2>&1 || open "$(_qa_app_path)" >/dev/null 2>&1 || true
 _qa_wait_for_process 15 0.5

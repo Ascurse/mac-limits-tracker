@@ -49,5 +49,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+codesign --force --sign - "$APP_DIR"
+
 echo "Done: $APP_DIR"
 echo "Run with: open \"$APP_DIR\""

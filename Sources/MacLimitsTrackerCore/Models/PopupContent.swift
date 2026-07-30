@@ -213,6 +213,10 @@ public enum PopupContentBuilder {
             groupedHistory[sample.windowMins, default: []].append(point)
         }
 
+        for (windowMins, points) in groupedHistory {
+            groupedHistory[windowMins] = points.sorted { $0.time < $1.time }
+        }
+
         return windows.flatMap { w -> [PopupRow] in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
             let row = windowRow(short: labels.short, long: labels.long,

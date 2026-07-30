@@ -47,6 +47,7 @@ fi
 export EVIDENCE_ROOT EVIDENCE_DIR BIN_DIR
 
 source "${SCRIPT_DIR}/lib/common.sh"
+source "${SCRIPT_DIR}/lib/ax.sh"
 source "${SCRIPT_DIR}/lib/assert.sh"
 
 printf '0\n' > "${EVIDENCE_DIR}/.failcount"
