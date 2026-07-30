@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Secrets preflight
+        id: secrets-preflight
         env:
           MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -36,8 +37,18 @@ jobs:
           [[ -n "$MACOS_CERT_PASSWORD" ]] || missing+=("MACOS_CERT_PASSWORD")
           [[ -n "$DEVELOPER_ID_APPLICATION" ]] || missing+=("DEVELOPER_ID_APPLICATION")
 
+          # Все три секрета отсутствуют — Developer ID не настроен, публикуем
+          # ad-hoc-подписанный zip вместо fail-closed abort.
+          if [[ ${#missing[@]} -eq 3 ]]; then
+            echo "No Developer ID secrets configured — building ad-hoc-signed release zip instead of sign+notarize."
+            echo "secrets_present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Частичный набор секретов — это неверная конфигурация, а не
+          # осознанное отсутствие подписи, поэтому остаёмся fail-closed.
           if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "FAIL-CLOSED: missing required secrets: ${missing[*]}" >&2
+            echo "FAIL-CLOSED: partial Developer ID secrets configured, missing: ${missing[*]}" >&2
             exit 1
           fi
 
@@ -67,6 +78,8 @@ jobs:
             exit 1
           fi
 
+          echo "secrets_present=true" >> "$GITHUB_OUTPUT"
+
       - name: Run tests
         run: swift test
 
@@ -81,6 +94,7 @@ jobs:
           lipo -info dist/MacLimitsTracker.app/Contents/MacOS/MacLimitsTracker
 
       - name: Import signing certificate
+        if: steps.secrets-preflight.outputs.secrets_present == 'true'
         env:
           MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -104,6 +118,7 @@ jobs:
           security find-identity -v -p codesigning
 
       - name: Sign, notarize and staple
+        if: steps.secrets-preflight.outputs.secrets_present == 'true'
         env:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
           NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
@@ -116,17 +131,48 @@ jobs:
           set -euo pipefail
           ./scripts/release/sign-and-notarize.sh --app dist/MacLimitsTracker.app --out dist
 
+      - name: Build ad-hoc release zip
+        # Developer ID не настроен — публикуем zip из ad-hoc-подписанного
+        # бандла (подпись линкера, см. make-app.sh) вместо sign+notarize.
+        if: steps.secrets-preflight.outputs.secrets_present == 'false'
+        run: |
+          set -euo pipefail
+          ditto -c -k --sequesterRsrc --keepParent dist/MacLimitsTracker.app dist/MacLimitsTracker.zip
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SECRETS_PRESENT: ${{ steps.secrets-preflight.outputs.secrets_present }}
         # Релиз мог быть создан вручную до пуша тега — тогда не падаем
         # на duplicate, а просто докладываем ассет в существующий релиз.
         run: |
           set -euo pipefail
+          notes_args=(--generate-notes)
+          notes_file=""
+          if [[ "$SECRETS_PRESENT" == "false" ]]; then
+            notes_file="$(mktemp -t release-notes.XXXXXX.md)"
+            cat > "$notes_file" <<'EOF'
+          ⚠️ **Unsigned build (ad-hoc signature)**
+
+          Developer ID секрет не настроен, поэтому этот релиз собран без
+          подписи и нотаризации. При первом запуске Gatekeeper покажет
+          предупреждение "unidentified developer".
+
+          Как запустить:
+          1. Распакуйте архив и перенесите `MacLimitsTracker.app` в `/Applications`.
+          2. Снимите карантин: `xattr -cr /Applications/MacLimitsTracker.app`
+             — либо откройте приложение через правый клик → «Открыть» вместо двойного клика.
+          EOF
+            notes_args=(--notes-file "$notes_file")
+          fi
+
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/MacLimitsTracker.zip --clobber
+            if [[ -n "$notes_file" ]]; then
+              gh release edit "$GITHUB_REF_NAME" --notes-file "$notes_file"
+            fi
           else
-            gh release create "$GITHUB_REF_NAME" dist/MacLimitsTracker.zip --generate-notes --title "$GITHUB_REF_NAME"
+            gh release create "$GITHUB_REF_NAME" dist/MacLimitsTracker.zip "${notes_args[@]}" --title "$GITHUB_REF_NAME"
           fi
 
       - name: Cleanup keychain
