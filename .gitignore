@@ -8,6 +8,7 @@
 /MacLimitsTracker.app
 /dist
 /.codegraph
+/.fastembed_cache
 
 # Beads / Dolt files (added by bd init)
 .dolt/
@@ -20,3 +21,6 @@
 
 # OpenCode session state
 .omo/
+
+# Кэш моделей fastembed (ygrep) — ~100 МБ бинарников, качается заново
+.fastembed_cache/
