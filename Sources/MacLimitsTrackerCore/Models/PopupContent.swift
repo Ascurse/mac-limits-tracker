@@ -21,15 +21,20 @@ public struct SparklinePoint: Equatable, Sendable {
     }
 }
 
-/// Спарклайн использования за 24ч для одного окна лимита.
+/// Тренд использования за трейлинг 7 дней для одного окна лимита. rangeStart/rangeEnd —
+/// границы периода, чтобы рендереры показывали подписи диапазона независимо от хранилища.
 public struct SparklineContent: Equatable, Sendable {
     public let windowMins: Int
     public let shortLabel: String
+    public let rangeStart: Date
+    public let rangeEnd: Date
     public let points: [SparklinePoint]
 
-    public init(windowMins: Int, shortLabel: String, points: [SparklinePoint]) {
+    public init(windowMins: Int, shortLabel: String, rangeStart: Date, rangeEnd: Date, points: [SparklinePoint]) {
         self.windowMins = windowMins
         self.shortLabel = shortLabel
+        self.rangeStart = rangeStart
+        self.rangeEnd = rangeEnd
         self.points = points
     }
 }
@@ -195,26 +200,27 @@ public enum PopupContentBuilder {
         return rows
     }
 
+    /// Диапазон тренда использования — трейлинг 7 дней.
+    private static let trendRangeDays: Double = 7
+
     /// Окна снапшота в уже заданном мапперами порядке; `usedPercent == nil` — слот
     /// заявлен, данных нет («… usage unavailable», раньше было только у Claude).
-    /// После каждого окна с данными — спарклайн его использования за последние 24ч,
-    /// если в истории есть сэмплы; идентичность окна — windowMins, никогда не индекс.
+    /// После каждого окна с данными — тренд его использования за последние 7 дней,
+    /// если в истории есть ≥2 сэмплов (1 точка тренда не рисует); идентичность
+    /// окна — windowMins, никогда не индекс.
     private static func windowRows(
         _ windows: [SnapshotWindow],
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
-        let cutoff = now.addingTimeInterval(-24 * 3600)
+        let rangeStart = now.addingTimeInterval(-Self.trendRangeDays * 24 * 3600)
+        let rangeEnd = now
 
         var groupedHistory: [Int: [SparklinePoint]] = [:]
-        for sample in history where sample.fetchedAt >= cutoff {
+        for sample in history where sample.fetchedAt >= rangeStart && sample.fetchedAt <= rangeEnd {
             let point = SparklinePoint(time: sample.fetchedAt, usedPercent: sample.usedPercent)
             groupedHistory[sample.windowMins, default: []].append(point)
-        }
-
-        for (windowMins, points) in groupedHistory {
-            groupedHistory[windowMins] = points.sorted { $0.time < $1.time }
         }
 
         return windows.flatMap { w -> [PopupRow] in
@@ -226,13 +232,39 @@ public enum PopupContentBuilder {
                                 thresholds: thresholds)
             guard w.usedPercent != nil, let durationMins = w.windowDurationMins else { return [row] }
 
-            let points = groupedHistory[durationMins] ?? []
+            let rawPoints = groupedHistory[durationMins] ?? []
+            let points = trendPoints(from: rawPoints, rangeStart: rangeStart, rangeEnd: rangeEnd)
 
-            guard !points.isEmpty else { return [row] }
-            let sparkline = SparklineContent(windowMins: durationMins,
-                                             shortLabel: labels.short, points: points)
+            guard points.count >= 2 else { return [row] }
+            let sparkline = SparklineContent(windowMins: durationMins, shortLabel: labels.short,
+                                             rangeStart: rangeStart, rangeEnd: rangeEnd, points: points)
             return [row, .sparkline(sparkline)]
         }
+    }
+
+    /// Даунсэмплинг сэмплов до максимум `maxPoints` точек: диапазон делится на равные
+    /// бакеты, из каждого бакета берётся ПОСЛЕДНИЙ (не максимум) сэмпл — тренд должен
+    /// показывать актуальное состояние на момент бакета, а не пиковое значение.
+    private static func trendPoints(
+        from samples: [SparklinePoint],
+        rangeStart: Date,
+        rangeEnd: Date,
+        maxPoints: Int = 24
+    ) -> [SparklinePoint] {
+        let sorted = samples.sorted { $0.time < $1.time }
+        guard sorted.count > maxPoints else { return sorted }
+
+        let totalInterval = rangeEnd.timeIntervalSince(rangeStart)
+        guard totalInterval > 0 else { return Array(sorted.suffix(maxPoints)) }
+
+        let bucketDuration = totalInterval / Double(maxPoints)
+        var latestByBucket: [Int: SparklinePoint] = [:]
+        for point in sorted {
+            let offset = point.time.timeIntervalSince(rangeStart)
+            let bucketIndex = min(maxPoints - 1, max(0, Int(offset / bucketDuration)))
+            latestByBucket[bucketIndex] = point
+        }
+        return latestByBucket.keys.sorted().compactMap { latestByBucket[$0] }
     }
 
     private static func renewalRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {

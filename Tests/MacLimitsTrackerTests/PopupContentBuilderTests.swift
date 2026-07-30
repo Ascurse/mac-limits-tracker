@@ -481,8 +481,9 @@ final class PopupContentBuilderUpdatedTextTests: XCTestCase {
     }
 }
 
-/// Спарклайн использования за 24ч: билдер вставляет `.sparkline` сразу после
-/// строки своего окна; идентичность окна — windowMins, никогда не индекс.
+/// Тренд использования за трейлинг 7 дней: билдер вставляет `.sparkline` сразу после
+/// строки своего окна, если в диапазоне ≥2 сэмплов; идентичность окна — windowMins,
+/// никогда не индекс.
 final class PopupContentBuilderSparklineTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -542,13 +543,53 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
         XCTAssertTrue(sparklines(s).isEmpty)
     }
 
-    func test_section_samplesOlderThan24h_noSparklineRow() {
+    func test_section_samplesOlderThan7d_noSparklineRow() {
         let history = [
-            sample(windowMins: 300, hoursAgo: 25, used: 40),
-            sample(windowMins: 300, hoursAgo: 48, used: 20),
+            sample(windowMins: 300, hoursAgo: 192, used: 40),
+            sample(windowMins: 300, hoursAgo: 240, used: 20),
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
         XCTAssertTrue(sparklines(s).isEmpty)
+    }
+
+    func test_section_futureSamples_excludedFromTrend() {
+        let history = [
+            sample(windowMins: 300, hoursAgo: 2, used: 40),
+            sample(windowMins: 300, hoursAgo: -1, used: 90),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        XCTAssertTrue(sparklines(s).isEmpty, "будущий сэмпл не должен попадать в тренд, а единственный оставшийся — < 2 точек")
+    }
+
+    func test_section_samplesWithinRangeBoundary_included() {
+        let history = [
+            sample(windowMins: 300, hoursAgo: 24 * 7 - 1, used: 10),
+            sample(windowMins: 300, hoursAgo: 1, used: 40),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        let sparks = sparklines(s)
+        XCTAssertEqual(sparks.first?.points.map(\.usedPercent), [10, 40])
+    }
+
+    func test_section_singleSample_noTrendRow() {
+        let history = [sample(windowMins: 300, hoursAgo: 1, used: 40)]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        XCTAssertTrue(sparklines(s).isEmpty, "единственная точка не формирует тренд")
+    }
+
+    func test_section_moreThanMaxPoints_downsamplesKeepingLatestPerBucket() {
+        // 30 сэмплов на 7-дневный диапазон — больше лимита в 24 точки, значит
+        // должен сработать даунсэмплинг с выбором ПОСЛЕДНЕГО сэмпла в бакете.
+        var history: [UsageSample] = []
+        for i in 0..<30 {
+            let hoursAgo = Double(29 - i) * (24.0 * 7 / 30)
+            history.append(sample(windowMins: 300, hoursAgo: hoursAgo, used: Double(i)))
+        }
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        let sparks = sparklines(s)
+        guard let points = sparks.first?.points else { return XCTFail("ожидался тренд") }
+        XCTAssertLessThanOrEqual(points.count, 24)
+        XCTAssertTrue(points.map(\.time) == points.map(\.time).sorted())
     }
 
     func test_section_windowWithNilUsedPercent_noSparklineRow() {
@@ -595,7 +636,10 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
             providerError: "network down", fetchedAt: now
         )
         let state = ProviderState(descriptor: claudeDescriptor, snapshot: fresh, lastGoodSnapshot: lastGood)
-        let history = [sample(windowMins: 300, hoursAgo: 1, used: 45)]
+        let history = [
+            sample(windowMins: 300, hoursAgo: 2, used: 40),
+            sample(windowMins: 300, hoursAgo: 1, used: 45),
+        ]
         let s = PopupContentBuilder.section(state, now: now, history: history)
 
         XCTAssertTrue(s.isStale)
@@ -603,7 +647,7 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
             return XCTFail("спарклайн обязан строиться по last-good снапшоту, rows: \(s.rows)")
         }
         XCTAssertEqual(spark.windowMins, 300)
-        XCTAssertEqual(spark.points.map(\.usedPercent), [45])
+        XCTAssertEqual(spark.points.map(\.usedPercent), [40, 45])
     }
 }
 
@@ -767,7 +811,10 @@ final class PopupContentBuilderSectionsTests: XCTestCase {
         let history: (String) -> [UsageSample] = { id in
             requestedIds.append(id)
             if id == "claude" {
-                return [self.sample(providerId: "claude", windowMins: 300, hoursAgo: 1, used: 30)]
+                return [
+                    self.sample(providerId: "claude", windowMins: 300, hoursAgo: 2, used: 25),
+                    self.sample(providerId: "claude", windowMins: 300, hoursAgo: 1, used: 30),
+                ]
             }
             return []
         }
