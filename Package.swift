@@ -9,6 +9,10 @@ let package = Package(
     products: [
         .executable(name: "MacLimitsTracker", targets: ["MacLimitsTracker"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/nalexn/ViewInspector", from: "0.10.3"),
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.19.4")
+    ],
     targets: [
         .target(
             name: "MacLimitsTrackerCore",
@@ -26,7 +30,11 @@ let package = Package(
         ),
         .testTarget(
             name: "MacLimitsTrackerTests",
-            dependencies: ["MacLimitsTrackerCore"],
+            dependencies: [
+                "MacLimitsTrackerCore",
+                "ViewInspector",
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
+            ],
             path: "Tests/MacLimitsTrackerTests"
         )
     ]
