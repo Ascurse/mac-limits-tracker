@@ -123,9 +123,16 @@ The Claude.ai OAuth access token is read from the Keychain service `Claude Code-
 
 ## Install
 
-Until Developer ID distribution is enabled, the supported installation path is a source build on the target Mac; follow [Local `.app` bundle](#local-app-bundle). Once a signed build is available, download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The release workflow publishes a universal Apple Silicon + Intel artifact only after tests, Developer ID signing, notarization, stapling and Gatekeeper assessment all succeed.
+Download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The release workflow publishes a universal Apple Silicon + Intel artifact after tests pass, in one of two forms depending on whether Developer ID secrets are configured in the repository:
 
-The workflow is fail-closed: missing signing or notarization credentials produce no release artifact. If the Releases page has no signed build for the version you need, use the source-build path below instead of treating an unsigned archive as a production release.
+- **Signed and notarized** — used automatically once `DEVELOPER_ID_APPLICATION` and a complete notarization credential set are present; passes Gatekeeper with no warning. See [Signed and notarized release](#signed-and-notarized-release) for how the pipeline builds it.
+- **Ad-hoc-signed zip** — the current default until Developer ID membership is obtained. Gatekeeper shows an "unidentified developer" warning on first launch; the release notes on GitHub explain the bypass, and the short version is:
+  ```bash
+  xattr -cr /Applications/MacLimitsTracker.app
+  ```
+  or right-click the app and choose **Open** instead of double-clicking it.
+
+A *partial* set of Developer ID secrets (e.g. only some of them configured) is treated as a configuration mistake and fails the workflow closed — it never publishes a half-signed artifact. If the Releases page has no build for the version you need, use the source-build path below instead: [Local `.app` bundle](#local-app-bundle).
 
 ## Build & run
 
@@ -165,9 +172,11 @@ Distribute source builds by recording the exact Git tag or commit used, building
 
 To roll back, build the last known-good ref in a separate checkout, quit the current app, replace its bundle with that known-good `MacLimitsTracker.app`, and reopen it. Replacing the bundle does not remove app-owned settings or usage history in `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`; back up that directory before rollback if the data itself is under investigation.
 
-Do not create a `v*` tag or publish an ad-hoc zip as a release. Production tags and GitHub Releases remain deferred until the Developer ID, notarization and clean-machine gates are configured.
+Pushing a `v*` tag publishes a GitHub Release automatically (see [Install](#install)) — signed and notarized when Developer ID secrets are configured, otherwise an ad-hoc-signed zip with a Gatekeeper-warning notice in the release body. Manual source-build rollout above stays useful for a targeted rollback or a machine you don't want to wait on a tagged release for.
 
 ### Signed and notarized release
+
+Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml), which takes this signed+notarized path automatically once all three Developer ID secrets below are present; with all three absent it instead builds the ad-hoc-signed zip described in [Install](#install) — a partial set of them fails the workflow closed instead of silently downgrading.
 
 The release script requires:
 
