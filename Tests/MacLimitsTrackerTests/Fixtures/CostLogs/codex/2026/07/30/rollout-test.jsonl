@@ -1,0 +1,5 @@
+{"timestamp":"2026-07-30T09:56:57.028Z","type":"session_meta","payload":{"id":"019d0a76-fixture"}}
+{"timestamp":"2026-07-30T09:57:13.340Z","type":"turn_context","payload":{"model":"gpt-5-codex"}}
+{"timestamp":"2026-07-30T10:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":999999,"cached_input_tokens":999999,"output_tokens":999999},"last_token_usage":{"input_tokens":200,"cached_input_tokens":20,"output_tokens":80}}}}
+{"timestamp":"2026-07-30T10:05:00.000Z","type":"turn_context","payload":{"model":"gpt-6-preview"}}
+{"timestamp":"2026-07-30T10:06:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":1},"last_token_usage":{"input_tokens":15,"cached_input_tokens":0,"output_tokens":9}}}}
