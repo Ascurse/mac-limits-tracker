@@ -39,7 +39,7 @@ swiftc -O -o "${EVIDENCE_ROOT}/bin/windowlist" "${SCRIPT_DIR}/lib/windowlist.swi
 # Accessibility permission check
 # ---------------------------------------------------------------------------
 echo "[preflight] Checking Accessibility permission for calling terminal..."
-if osascript -e 'tell application "System Events" to return name of first application process' >/dev/null 2>&1; then
+if osascript -e 'tell application "System Events" to tell process "Finder" to return count of windows' >/dev/null 2>&1; then
     echo "[preflight] Accessibility permission OK."
 else
     echo "[preflight] ERROR: Accessibility permission missing for this terminal."

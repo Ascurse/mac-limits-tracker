@@ -21,6 +21,34 @@
 
 ---
 
+## 2026-07-30 — QA failure-state нельзя эмулировать только proxy-переменными
+
+**Симптом:** сценарий с `HTTP_PROXY` / `HTTPS_PROXY=127.0.0.1:1` продолжает получать живые данные и ложно считает network failure проверенным.
+**Причина:** URLSession и provider subprocesses на macOS не обязаны наследовать или учитывать эти proxy-переменные.
+**Обход:** запускать bundle с изолированным `HOME` и минимальным `PATH`, затем проверять видимые provider errors и чистый recovery-relaunch; пользовательские credentials при этом не менять.
+**Где это в коде:** [scripts/qa/scenarios/07-network-failure.sh](../../scripts/qa/scenarios/07-network-failure.sh), [Sources/MacLimitsTrackerCore/Providers/LimitsProviders.swift](../../Sources/MacLimitsTrackerCore/Providers/LimitsProviders.swift).
+
+## 2026-07-30 — QA-персистентность не должна сравнивать системные NSWindow Frame
+
+**Симптом:** quit/relaunch считается провалом, хотя настройки приложения сохранились; отличается только позиция окна после смены дисплея или Space.
+**Причина:** macOS хранит `NSWindow Frame *` в том же defaults-domain и может обновлять эти ключи независимо от app-owned settings.
+**Обход:** перед сравнением экспортов defaults удалить только `NSWindow Frame DesktopWidget`, `NSWindow Frame com_apple_SwiftUI_Settings_window` и `NSWindow Frame main`.
+**Где это в коде:** [scripts/qa/scenarios/10-quit-relaunch.sh](../../scripts/qa/scenarios/10-quit-relaunch.sh).
+
+## 2026-07-30 — Публичный PopupContentBuilder сортирует входную историю сам
+
+**Симптом:** sparkline строится не в хронологическом порядке, если caller передал те же samples в произвольном порядке.
+**Причина:** `HistoryStore.samples` сортирует свой результат, но `PopupContentBuilder.section` — публичная чистая граница и также вызывается напрямую.
+**Обход:** сортировать каждую группу samples по `time` внутри builder; не полагаться на порядок конкретного storage-caller.
+**Где это в коде:** [Sources/MacLimitsTrackerCore/Models/PopupContent.swift](../../Sources/MacLimitsTrackerCore/Models/PopupContent.swift).
+
+## 2026-07-30 — Accessibility preflight обязан делать глубокий AX-запрос
+
+**Симптом:** preflight сообщает `Accessibility OK`, а первый сценарий падает с `osascript is not allowed assistive access (-25211)`.
+**Причина:** чтение имени application process не требует тех же Accessibility-прав, что управление окнами и menu-bar item.
+**Обход:** в preflight запрашивать через System Events свойство окна Finder; отсутствие разрешения должно останавливать harness до запуска сценариев.
+**Где это в коде:** [scripts/qa/preflight.sh](../../scripts/qa/preflight.sh), [scripts/qa/lib/ax.sh](../../scripts/qa/lib/ax.sh).
+
 ## 2026-07-30 — `SMAppService.requiresApproval` означает «зарегистрировано, но ждёт пользователя»
 
 **Симптом:** Тоггл «Launch at login» включён, но приложение не запускается после входа в систему.

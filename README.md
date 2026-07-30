@@ -123,7 +123,7 @@ The Claude.ai OAuth access token is read from the Keychain service `Claude Code-
 
 ## Install
 
-Download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The current release workflow publishes a universal Apple Silicon + Intel artifact only after tests, Developer ID signing, notarization, stapling and Gatekeeper assessment all succeed.
+Until Developer ID distribution is enabled, the supported installation path is a source build on the target Mac; follow [Local `.app` bundle](#local-app-bundle). Once a signed build is available, download `MacLimitsTracker.zip` from the [latest release](https://github.com/Ascurse/mac-limits-tracker/releases/latest), unzip it and move `MacLimitsTracker.app` to `/Applications`. The release workflow publishes a universal Apple Silicon + Intel artifact only after tests, Developer ID signing, notarization, stapling and Gatekeeper assessment all succeed.
 
 The workflow is fail-closed: missing signing or notarization credentials produce no release artifact. If the Releases page has no signed build for the version you need, use the source-build path below instead of treating an unsigned archive as a production release.
 
@@ -158,6 +158,14 @@ This local bundle is not a distributable release. If Gatekeeper quarantines an a
 ```bash
 xattr -dr com.apple.quarantine /Applications/MacLimitsTracker.app
 ```
+
+### Source-build rollout and rollback
+
+Distribute source builds by recording the exact Git tag or commit used, building that ref on each target Mac with `./make-app.sh`, quitting the running app, and replacing its existing bundle with `dist/MacLimitsTracker.app`. Keep the previous bundle until the replacement has launched and refreshed successfully.
+
+To roll back, build the last known-good ref in a separate checkout, quit the current app, replace its bundle with that known-good `MacLimitsTracker.app`, and reopen it. Replacing the bundle does not remove app-owned settings or usage history in `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`; back up that directory before rollback if the data itself is under investigation.
+
+Do not create a `v*` tag or publish an ad-hoc zip as a release. Production tags and GitHub Releases remain deferred until the Developer ID, notarization and clean-machine gates are configured.
 
 ### Signed and notarized release
 
