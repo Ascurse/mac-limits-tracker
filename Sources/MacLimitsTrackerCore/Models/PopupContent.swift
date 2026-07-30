@@ -67,6 +67,7 @@ public enum Severity: Equatable, Sendable {
                 )
                 if isMoreSevere(severity, than: worst) {
                     worst = severity
+                    if worst == .critical { return .critical }
                 }
             }
         }
@@ -210,10 +211,6 @@ public enum PopupContentBuilder {
         for sample in history where sample.fetchedAt >= cutoff {
             let point = SparklinePoint(time: sample.fetchedAt, usedPercent: sample.usedPercent)
             groupedHistory[sample.windowMins, default: []].append(point)
-        }
-
-        for (windowMins, points) in groupedHistory {
-            groupedHistory[windowMins] = points.sorted { $0.time < $1.time }
         }
 
         return windows.flatMap { w -> [PopupRow] in
