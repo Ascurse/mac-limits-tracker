@@ -1,0 +1,21 @@
+▿ ProviderSectionContent
+  ▿ descriptor: ProviderDescriptor
+    - accentColorHex: 16752228
+    - displayName: "Claude Code"
+    - id: "claude"
+    - loginHelp: Optional<LoginHelp>.none
+    - menuBarSymbol: "C"
+    - shortName: "Claude"
+  - isStale: false
+  ▿ rows: 3 elements
+    ▿ PopupRow
+      ▿ detail: (2 elements)
+        - key: "Plan"
+        - value: "max"
+    ▿ PopupRow
+      - note: "5h usage unavailable"
+    ▿ PopupRow
+      ▿ detail: (2 elements)
+        - key: "Email"
+        - value: "a@b.co"
+  - title: "Claude Code"

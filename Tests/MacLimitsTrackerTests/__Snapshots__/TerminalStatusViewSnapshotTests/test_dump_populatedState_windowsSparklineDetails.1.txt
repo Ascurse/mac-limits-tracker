@@ -1,0 +1,51 @@
+▿ ProviderSectionContent
+  ▿ descriptor: ProviderDescriptor
+    - accentColorHex: 16752228
+    - displayName: "Claude Code"
+    - id: "claude"
+    - loginHelp: Optional<LoginHelp>.none
+    - menuBarSymbol: "C"
+    - shortName: "Claude"
+  - isStale: false
+  ▿ rows: 5 elements
+    ▿ PopupRow
+      ▿ detail: (2 elements)
+        - key: "Plan"
+        - value: "max"
+    ▿ PopupRow
+      ▿ window: WindowContent
+        - longLabel: "5h"
+        - remainingPercent: 58.0
+        - remainingText: "58%"
+        - resetText: Optional<String>.none
+        - severity: Severity.normal
+        - shortLabel: "5h"
+    ▿ PopupRow
+      ▿ sparkline: SparklineContent
+        ▿ points: 3 elements
+          ▿ SparklinePoint
+            - time: 2023-11-14T12:13:20Z
+            - usedPercent: 20.0
+          ▿ SparklinePoint
+            - time: 2023-11-14T17:13:20Z
+            - usedPercent: 30.0
+          ▿ SparklinePoint
+            - time: 2023-11-14T20:13:20Z
+            - usedPercent: 40.0
+        - rangeEnd: 2023-11-14T22:13:20Z
+        - rangeStart: 2023-11-07T22:13:20Z
+        - shortLabel: "5h"
+        - windowMins: 300
+    ▿ PopupRow
+      ▿ window: WindowContent
+        - longLabel: "Weekly"
+        - remainingPercent: 31.0
+        - remainingText: "31%"
+        - resetText: Optional<String>.none
+        - severity: Severity.warning
+        - shortLabel: "wk"
+    ▿ PopupRow
+      ▿ detail: (2 elements)
+        - key: "Email"
+        - value: "a@b.co"
+  - title: "Claude Code"
