@@ -21,6 +21,15 @@
 
 ---
 
+## 2026-08-01 — Образ GitHub Actions отстаёт от локального Swift на два мажора
+
+**Симптом:** локально `swift build && swift test` зелёные, а тот же коммит в CI падает — сначала на резолве зависимостей («package 'swift-custom-dump' @ 1.6.1 is using Swift tools version 6.1.0 but the installed version is 5.10.0»), а после подъёма образа до `macos-15` — на компиляции («the compiler is unable to type-check this expression in reasonable time», `ProviderOverview.swift:568`).
+**Причина:** `macos-14` несёт Swift 5.10, `macos-15` — 6.1.2, локальная машина — 6.3.3. `platforms: [.macOS(.v14)]` в Package.swift задаёт минимальную цель развёртывания и никак не связан с версией тулчейна на раннере. Обе поломки настоящие, но видны только на старом тулчейне.
+**Обход:** держать образ CI близко к машине разработчика — `runs-on: macos-26`. Про запас: перегруженное SwiftUI-выражение всё равно стоит разбить (bd `mac-limits-tracker-rmu`), иначе проект привязан к самому свежему тайпчекеру.
+**Где это в коде:** [.github/workflows/ci.yml](../../.github/workflows/ci.yml); тот же капкан ещё не расшит в [.github/workflows/release.yml](../../.github/workflows/release.yml) (bd `mac-limits-tracker-58u`).
+
+---
+
 ## 2026-07-30 — QA failure-state нельзя эмулировать только proxy-переменными
 
 **Симптом:** сценарий с `HTTP_PROXY` / `HTTPS_PROXY=127.0.0.1:1` продолжает получать живые данные и ложно считает network failure проверенным.

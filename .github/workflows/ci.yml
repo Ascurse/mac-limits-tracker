@@ -1,0 +1,36 @@
+name: CI
+
+# Гоняет сборку и тесты на каждый PR и push в main. Релизный пайплайн
+# (release.yml) срабатывает только по тегу v* — до этого гейта красный main
+# проскакивал незамеченным (см. дубликат RefreshIntervalTests, PR #61).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Не macos-14: там Swift 5.10, а транзитивная зависимость
+    # swift-custom-dump (через swift-snapshot-testing) требует tools-version
+    # 6.1. Не macos-15 (Swift 6.1): его тайпчекер не осиливает выражение в
+    # ProviderOverview.swift за отведённое время. Образ держим близко к
+    # машине разработчика, иначе гейт краснеет на коде, который локально
+    # собирается. platforms: .macOS(.v14) — минимальная цель развёртывания,
+    # она новее образ не запрещает.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      # swift test собирает только тестовый таргет и его зависимости —
+      # приложение и VerifyCli в него не входят, поэтому сборка отдельно.
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
