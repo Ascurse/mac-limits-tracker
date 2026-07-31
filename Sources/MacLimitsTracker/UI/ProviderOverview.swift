@@ -567,15 +567,34 @@ private enum ProviderOverviewPreviewFixtures {
     private static func history(now: Date) -> (String) -> [UsageSample] {
         { providerId in
             guard providerId == claude.id || providerId == codex.id else { return [] }
-            return (0..<12).flatMap { i in
-                [300, 10080].map { mins in
-                    UsageSample(
-                        providerId: providerId, windowMins: mins,
-                        fetchedAt: now.addingTimeInterval(TimeInterval(-i * 2 * 3600)),
-                        usedPercent: 12 + Double(i) * 2.5 + (mins == 10080 ? 20 : 0),
-                        resetsAt: nil)
+
+            let windowDurations = [300, 10080]
+            let sampleCount = 12
+            let stepHours = 2
+            let stepSeconds: TimeInterval = TimeInterval(stepHours * 3600)
+            let baseUsedPercent = 12.0
+            let hourlyIncrement = 2.5
+            let weeklyOffset = 20.0
+
+            var samples: [UsageSample] = []
+            samples.reserveCapacity(sampleCount * windowDurations.count)
+            for i in 0..<sampleCount {
+                let offset: TimeInterval = -Double(i) * stepSeconds
+                let fetchedAt = now.addingTimeInterval(offset)
+                let indexPercent = baseUsedPercent + Double(i) * hourlyIncrement
+                for mins in windowDurations {
+                    let windowOffset = (mins == 10080) ? weeklyOffset : 0.0
+                    let usedPercent = indexPercent + windowOffset
+                    samples.append(UsageSample(
+                        providerId: providerId,
+                        windowMins: mins,
+                        fetchedAt: fetchedAt,
+                        usedPercent: usedPercent,
+                        resetsAt: nil
+                    ))
                 }
             }
+            return samples
         }
     }
 }
