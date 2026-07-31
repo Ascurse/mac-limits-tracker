@@ -401,6 +401,83 @@ assert_file_absent "T4: skip-notarize does not create release zip" "$T4_SKIP_OUT
 assert_file_absent "T4: skip-notarize does not create notary zip" "$SCRATCH/MacLimitsTracker-notary.zip"
 
 # ---------------------------------------------------------------------------
+# T5: release.yml ad-hoc fallback branch
+# ---------------------------------------------------------------------------
+
+WORKFLOW_FILE="$ROOT/.github/workflows/release.yml"
+
+run_cmd python3 -c "import yaml; yaml.safe_load(open('$WORKFLOW_FILE'))"
+assert_exit_zero "T5: release.yml parses as valid YAML"
+
+cat > "$SCRATCH/t5-release-check.py" <<'PY'
+import yaml, sys
+
+def step_by_name(steps, name):
+    for s in steps:
+        if s.get('name') == name:
+            return s
+    return None
+
+def fail(msg):
+    print(msg)
+    sys.exit(1)
+
+with open(sys.argv[1]) as f:
+    wf = yaml.safe_load(f)
+
+job = wf['jobs']['release']
+if job.get('runs-on') != 'macos-26':
+    fail(f"RUNNER_BAD: {job.get('runs-on')}")
+print("RUNNER_OK")
+
+steps = job['steps']
+ids = {s.get('id'): s for s in steps if s.get('id')}
+if 'secrets-preflight' not in ids:
+    fail("MISSING_PREFLIGHT")
+print("PREFLIGHT_OK")
+
+sign = step_by_name(steps, 'Sign, notarize and staple')
+if not sign:
+    fail("MISSING_SIGN_STEP")
+if "steps.secrets-preflight.outputs.secrets_present == 'true'" not in sign.get('if', ''):
+    fail(f"SIGN_IF_BAD: {sign.get('if')}")
+print("SIGN_GATED_TRUE")
+
+adhoc = step_by_name(steps, 'Build ad-hoc release zip')
+if not adhoc:
+    fail("MISSING_ADHOC_STEP")
+if "steps.secrets-preflight.outputs.secrets_present == 'false'" not in adhoc.get('if', ''):
+    fail(f"ADHOC_IF_BAD: {adhoc.get('if')}")
+run = adhoc.get('run', '')
+if 'ditto -c -k --sequesterRsrc --keepParent dist/MacLimitsTracker.app dist/MacLimitsTracker.zip' not in run:
+    fail("ADHOC_RUN_BAD")
+print("ADHOC_GATED_FALSE")
+
+release = step_by_name(steps, 'Create GitHub Release')
+if not release:
+    fail("MISSING_RELEASE_STEP")
+env = release.get('env', {})
+if env.get('SECRETS_PRESENT') != '${{ steps.secrets-preflight.outputs.secrets_present }}':
+    fail(f"RELEASE_ENV_BAD: {env.get('SECRETS_PRESENT')}")
+print("RELEASE_ENV_OK")
+PY
+
+run_cmd python3 "$SCRATCH/t5-release-check.py" "$WORKFLOW_FILE"
+assert_exit_zero "T5: release.yml structure checks pass"
+assert_stdout_contains "T5: release job runs on macos-26" "RUNNER_OK"
+assert_stdout_contains "T5: secrets-preflight step exists" "PREFLIGHT_OK"
+assert_stdout_contains "T5: sign step gated on secrets_present=true" "SIGN_GATED_TRUE"
+assert_stdout_contains "T5: ad-hoc zip step gated on secrets_present=false" "ADHOC_GATED_FALSE"
+assert_stdout_contains "T5: ad-hoc zip uses ditto on dist/MacLimitsTracker.app" "ADHOC_GATED_FALSE"
+assert_stdout_contains "T5: release step reads SECRETS_PRESENT" "RELEASE_ENV_OK"
+
+run_cmd grep -qF 'secrets_present=false' "$WORKFLOW_FILE"
+assert_exit_zero "T5: preflight outputs secrets_present=false when all DevID secrets missing"
+
+run_cmd grep -qF 'FAIL-CLOSED: partial Developer ID secrets configured' "$WORKFLOW_FILE"
+assert_exit_zero "T5: preflight remains fail-closed on partial DevID secrets"
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
