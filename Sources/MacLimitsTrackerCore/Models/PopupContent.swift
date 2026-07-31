@@ -6,6 +6,7 @@ public enum PopupRow: Equatable {
     case detail(key: String, value: String)
     case window(WindowContent)
     case sparkline(SparklineContent)
+    case burnRate(BurnRateContent)
     case error(String)
     case note(String)
 }
@@ -36,6 +37,29 @@ public struct SparklineContent: Equatable, Sendable {
         self.rangeStart = rangeStart
         self.rangeEnd = rangeEnd
         self.points = points
+    }
+}
+
+/// Скорость расхода окна лимита: относительно продолжительности самого окна,
+/// чтобы не путать «быстро» для 5-часового и недельного окон.
+public enum BurnRatePace: Equatable, Sendable {
+    case fast
+    case moderate
+    case slow
+}
+
+/// Текстовое представление burn rate и прогноза исчерпания для одного окна.
+public struct BurnRateContent: Equatable, Sendable {
+    public let windowMins: Int
+    public let shortLabel: String
+    public let text: String
+    public let pace: BurnRatePace
+
+    public init(windowMins: Int, shortLabel: String, text: String, pace: BurnRatePace) {
+        self.windowMins = windowMins
+        self.shortLabel = shortLabel
+        self.text = text
+        self.pace = pace
     }
 }
 
@@ -230,15 +254,32 @@ public enum PopupContentBuilder {
                                 resetsAt: w.resetsAt, now: now,
                                 unavailable: "\(labels.long) usage unavailable",
                                 thresholds: thresholds)
-            guard w.usedPercent != nil, let durationMins = w.windowDurationMins else { return [row] }
+            guard let usedPercent = w.usedPercent, let durationMins = w.windowDurationMins else { return [row] }
+
+            var rows: [PopupRow] = [row]
+
+            if let burnRate = BurnRateCalculator.calculate(
+                samples: history,
+                windowMins: durationMins,
+                currentUsedPercent: usedPercent,
+                currentResetsAt: w.resetsAt,
+                now: now
+            ) {
+                rows.append(.burnRate(LimitsFormatting.burnRateContent(
+                    burnRate: burnRate,
+                    shortLabel: labels.short,
+                    now: now
+                )))
+            }
 
             let rawPoints = groupedHistory[durationMins] ?? []
             let points = trendPoints(from: rawPoints, rangeStart: rangeStart, rangeEnd: rangeEnd)
 
-            guard points.count >= 2 else { return [row] }
+            guard points.count >= 2 else { return rows }
             let sparkline = SparklineContent(windowMins: durationMins, shortLabel: labels.short,
                                              rangeStart: rangeStart, rangeEnd: rangeEnd, points: points)
-            return [row, .sparkline(sparkline)]
+            rows.append(.sparkline(sparkline))
+            return rows
         }
     }
 
