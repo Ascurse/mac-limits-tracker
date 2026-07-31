@@ -61,3 +61,41 @@ final class AsciiSparklineTests: XCTestCase {
         XCTAssertEqual(result.count, 2)
     }
 }
+
+final class AsciiSparklineTrendTests: XCTestCase {
+    private func trend(_ usedPercents: [Double]) -> SparklineContent {
+        let now = Date()
+        let points = usedPercents.enumerated().map { i, value in
+            SparklinePoint(time: now.addingTimeInterval(TimeInterval(i * 3600)), usedPercent: value)
+        }
+        return SparklineContent(windowMins: 300, shortLabel: "5h",
+                                rangeStart: now.addingTimeInterval(-7 * 24 * 3600),
+                                rangeEnd: now, points: points)
+    }
+
+    func test_renderTrend_emptyPoints_returnsEmptyString() {
+        XCTAssertEqual(AsciiSparkline.render(trend([])), "")
+    }
+
+    func test_renderTrend_fewerPointsThanWidth_rendersOneBlockPerPoint() {
+        XCTAssertEqual(AsciiSparkline.render(trend([0, 50, 100]), width: 24), "▁▄█")
+    }
+
+    func test_renderTrend_morePointsThanWidth_bucketsDownToWidth() {
+        // 48 точек истории → ровно 24 глифа; каждый бакет из двух точек даёт максимум 90.
+        let values = (0..<48).map { $0 % 2 == 0 ? 10.0 : 90.0 }
+        let result = AsciiSparkline.render(trend(values), width: 24)
+        XCTAssertEqual(result.count, 24)
+        XCTAssertEqual(result, String(repeating: "▇", count: 24))
+    }
+
+    func test_renderTrend_bucketKeepsPeakNotAverage() {
+        XCTAssertEqual(AsciiSparkline.render(trend([10, 90, 20, 80]), width: 2), "▇▆")
+    }
+
+    func test_renderTrend_explicitWidth_respected() {
+        let result = AsciiSparkline.render(trend([0, 100, 0, 100, 0]), width: 5)
+        XCTAssertEqual(result, "▁█▁█▁")
+        XCTAssertEqual(result.count, 5)
+    }
+}

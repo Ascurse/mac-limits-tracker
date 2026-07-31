@@ -96,15 +96,27 @@ struct SystemOverviewBody: View {
             detailRow("\(w.longLabel) remaining", w.remainingText)
             detailRow("\(w.longLabel) resets", w.resetText ?? "—")
         case .sparkline(let spark):
-            // PointMark обязателен: одиночный LineMark с одной точкой ничего не рисует.
-            Chart(spark.points, id: \.time) { point in
-                LineMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
-                PointMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
+            VStack(alignment: .leading, spacing: 2) {
+                // PointMark обязателен: одиночный LineMark с одной точкой ничего не рисует.
+                Chart(spark.points, id: \.time) { point in
+                    LineMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
+                    PointMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .foregroundStyle(accent)
+                .frame(height: sparklineHeight)
+                // Подпись диапазона: "7d" слева, дни начала/конца справа.
+                HStack {
+                    Text("7d")
+                    Spacer()
+                    Text(spark.rangeStart, format: .dateTime.month(.abbreviated).day())
+                    Text("–")
+                    Text(spark.rangeEnd, format: .dateTime.month(.abbreviated).day())
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .foregroundStyle(accent)
-            .frame(height: sparklineHeight)
         case .error(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
@@ -225,7 +237,8 @@ struct TerminalOverviewBody: View {
                 }
             }
         case .sparkline(let spark):
-            Text(AsciiSparkline.render(usedPercents: spark.points.map(\.usedPercent)))
+            (Text("7d ").foregroundStyle(Palette.dim)
+             + Text(AsciiSparkline.render(spark)))
                 .foregroundStyle(accent)
                 .padding(.leading, 26)
         case .error(let message):
@@ -335,7 +348,8 @@ struct PhosphorOverviewBody: View {
                 }
             }
         case .sparkline(let spark):
-            Text(AsciiSparkline.render(usedPercents: spark.points.map(\.usedPercent)))
+            (Text("7d ").foregroundStyle(Palette.dim)
+             + Text(AsciiSparkline.render(spark)))
                 .foregroundStyle(Palette.mid)
                 .padding(.leading, 26)
         case .error(let message):
@@ -457,13 +471,14 @@ struct TUIOverviewBody: View {
         .foregroundStyle(Palette.dim)
     }
 
-    // Спарклайн [▁▂▄█…] в стиле датчика: заполнено = использовано.
+    // Спарклайн [▁▂▄█…] 7d в стиле датчика: заполнено = использовано, ширина 24 глифа.
     private func sparklineGauge(_ spark: SparklineContent) -> some View {
         (
             Text("[")
-            + Text(AsciiSparkline.render(usedPercents: spark.points.map(\.usedPercent)))
+            + Text(AsciiSparkline.render(spark, width: 24))
                 .foregroundStyle(Palette.normal)
             + Text("]")
+            + Text(" 7d")
         )
         .foregroundStyle(Palette.dim)
         .padding(.leading, 24)
