@@ -29,4 +29,32 @@ final class LimitsFormattingTests: XCTestCase {
         XCTAssertFalse(text.isEmpty)
         XCTAssertNotEqual(text, "—")
     }
+
+    func test_burnRateContentFormatsRateAndForecast() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let burn = BurnRate(
+            usedPercentPerHour: 50,
+            exhaustionDate: now.addingTimeInterval(1 * 3600),
+            windowMins: 300
+        )
+        let content = LimitsFormatting.burnRateContent(burnRate: burn, shortLabel: "5h", now: now)
+        XCTAssertEqual(content.windowMins, 300)
+        XCTAssertEqual(content.shortLabel, "5h")
+        XCTAssertTrue(content.text.hasPrefix("Burn 5h: +50%/h"))
+        XCTAssertTrue(content.text.contains("exhausted in 1h"))
+        XCTAssertEqual(content.pace, .fast)
+    }
+
+    func test_burnRateContentFormatsSmallRateAndLongForecast() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let burn = BurnRate(
+            usedPercentPerHour: 0.42,
+            exhaustionDate: now.addingTimeInterval(5 * 24 * 3600 + 3 * 3600),
+            windowMins: 10080
+        )
+        let content = LimitsFormatting.burnRateContent(burnRate: burn, shortLabel: "wk", now: now)
+        XCTAssertTrue(content.text.hasPrefix("Burn wk: +0.42%/h"))
+        XCTAssertTrue(content.text.contains("exhausted in 5d 3h"))
+        XCTAssertEqual(content.pace, .slow)
+    }
 }

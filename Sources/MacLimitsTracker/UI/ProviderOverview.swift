@@ -117,6 +117,10 @@ struct SystemOverviewBody: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+        case .burnRate(let burn):
+            Text(burn.text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .error(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
@@ -241,6 +245,11 @@ struct TerminalOverviewBody: View {
              + Text(AsciiSparkline.render(spark)))
                 .foregroundStyle(accent)
                 .padding(.leading, 26)
+        case .burnRate(let burn):
+            Text(burn.text)
+                .font(.caption)
+                .foregroundStyle(terminalPaceColor(burn.pace))
+                .padding(.leading, 26)
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
         case .note(let text):
@@ -265,6 +274,14 @@ struct TerminalOverviewBody: View {
         case .normal:   return accent
         case .warning:  return Palette.warning
         case .critical: return Palette.critical
+        }
+    }
+
+    private func terminalPaceColor(_ pace: BurnRatePace) -> Color {
+        switch pace {
+        case .fast:     return Palette.critical
+        case .moderate: return Palette.warning
+        case .slow:     return Palette.dim
         }
     }
 }
@@ -350,6 +367,11 @@ struct PhosphorOverviewBody: View {
         case .sparkline(let spark):
             (Text("7d ").foregroundStyle(Palette.dim)
              + Text(AsciiSparkline.render(spark)))
+                .foregroundStyle(Palette.mid)
+                .padding(.leading, 26)
+        case .burnRate(let burn):
+            Text(burn.text)
+                .font(.caption)
                 .foregroundStyle(Palette.mid)
                 .padding(.leading, 26)
         case .error(let message):
@@ -449,6 +471,11 @@ struct TUIOverviewBody: View {
             }
         case .sparkline(let spark):
             sparklineGauge(spark)
+        case .burnRate(let burn):
+            Text("[\(burn.text)]")
+                .font(.caption)
+                .foregroundStyle(tuiPaceColor(burn.pace))
+                .padding(.leading, 24)
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
         case .note(let text):
@@ -489,6 +516,14 @@ struct TUIOverviewBody: View {
         case .normal:   return Palette.normal
         case .warning:  return Palette.warning
         case .critical: return Palette.critical
+        }
+    }
+
+    private func tuiPaceColor(_ pace: BurnRatePace) -> Color {
+        switch pace {
+        case .fast:     return Palette.critical
+        case .moderate: return Palette.warning
+        case .slow:     return Palette.dim
         }
     }
 }

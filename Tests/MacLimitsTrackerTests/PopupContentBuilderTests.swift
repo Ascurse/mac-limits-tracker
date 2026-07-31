@@ -487,12 +487,17 @@ final class PopupContentBuilderUpdatedTextTests: XCTestCase {
 final class PopupContentBuilderSparklineTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private func makeState(fiveHourUsed: Double? = 28, weeklyUsed: Double? = 69) -> ProviderState {
+    private func makeState(
+        fiveHourUsed: Double? = 28,
+        fiveHourResetsAt: Date? = nil,
+        weeklyUsed: Double? = 69,
+        weeklyResetsAt: Date? = nil
+    ) -> ProviderState {
         let snap = LimitsSnapshot(
             loggedIn: true, plan: "max",
             windows: [
-                SnapshotWindow(windowDurationMins: 300, usedPercent: fiveHourUsed, resetsAt: nil),
-                SnapshotWindow(windowDurationMins: 10080, usedPercent: weeklyUsed, resetsAt: nil),
+                SnapshotWindow(windowDurationMins: 300, usedPercent: fiveHourUsed, resetsAt: fiveHourResetsAt),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: weeklyUsed, resetsAt: weeklyResetsAt),
             ],
             creditsBalance: nil, rateLimitReachedType: nil, details: [],
             daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
@@ -501,15 +506,22 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
         return ProviderState(descriptor: claudeDescriptor, snapshot: snap)
     }
 
-    private func sample(windowMins: Int, hoursAgo: Double, used: Double) -> UsageSample {
+    private func sample(windowMins: Int, hoursAgo: Double, used: Double, resetsAt: Date? = nil) -> UsageSample {
         UsageSample(providerId: "claude", windowMins: windowMins,
                     fetchedAt: now.addingTimeInterval(-hoursAgo * 3600),
-                    usedPercent: used, resetsAt: nil)
+                    usedPercent: used, resetsAt: resetsAt)
     }
 
     private func sparklines(_ s: ProviderSectionContent) -> [SparklineContent] {
         s.rows.compactMap {
             if case .sparkline(let c) = $0 { return c }
+            return nil
+        }
+    }
+
+    private func burnRates(_ s: ProviderSectionContent) -> [BurnRateContent] {
+        s.rows.compactMap {
+            if case .burnRate(let c) = $0 { return c }
             return nil
         }
     }
@@ -524,18 +536,25 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
 
-        XCTAssertEqual(s.rows.count, 4)
+        // Plan, 5h, burnRate 5h, sparkline 5h, wk.
+        XCTAssertEqual(s.rows.count, 5)
         guard case .window(let fh) = s.rows[1] else { return XCTFail("rows: \(s.rows)") }
         XCTAssertEqual(fh.shortLabel, "5h")
-        guard case .sparkline(let spark) = s.rows[2] else {
-            return XCTFail("ожидался .sparkline сразу после строки 5h, rows: \(s.rows)")
+        guard case .burnRate(let burn) = s.rows[2] else {
+            return XCTFail("ожидался .burnRate сразу после строки 5h, rows: \(s.rows)")
+        }
+        XCTAssertEqual(burn.windowMins, 300)
+        XCTAssertEqual(burn.shortLabel, "5h")
+        XCTAssertTrue(burn.text.hasPrefix("Burn 5h:"))
+        guard case .sparkline(let spark) = s.rows[3] else {
+            return XCTFail("ожидался .sparkline после burnRate, rows: \(s.rows)")
         }
         XCTAssertEqual(spark.windowMins, 300)
         XCTAssertEqual(spark.shortLabel, "5h")
         // Точки отсортированы по времени по возрастанию.
         XCTAssertEqual(spark.points.map(\.usedPercent), [20, 30, 40])
         XCTAssertTrue(spark.points.map(\.time) == spark.points.map(\.time).sorted())
-        guard case .window(let wk) = s.rows[3] else { return XCTFail("rows: \(s.rows)") }
+        guard case .window(let wk) = s.rows[4] else { return XCTFail("rows: \(s.rows)") }
         XCTAssertEqual(wk.shortLabel, "wk")
     }
 
@@ -649,6 +668,47 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
         }
         XCTAssertEqual(spark.windowMins, 300)
         XCTAssertEqual(spark.points.map(\.usedPercent), [40, 45])
+    }
+
+    func test_section_insufficientHistory_noBurnRateRow() {
+        let history = [
+            sample(windowMins: 300, hoursAgo: 5, used: 30),
+            sample(windowMins: 300, hoursAgo: 1, used: 40),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        XCTAssertTrue(burnRates(s).isEmpty)
+    }
+
+    func test_section_flatHistory_noBurnRateRow() {
+        let history = (0..<4).map { i in
+            sample(windowMins: 300, hoursAgo: Double(i + 1) * 2, used: 30)
+        }
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        XCTAssertTrue(burnRates(s).isEmpty)
+    }
+
+    func test_section_burnRateByWindowMins_doesNotLeakAcrossWindows() {
+        let history = [
+            sample(windowMins: 300, hoursAgo: 10, used: 20),
+            sample(windowMins: 300, hoursAgo: 5, used: 30),
+            sample(windowMins: 300, hoursAgo: 2, used: 40),
+        ]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        let burns = burnRates(s)
+        XCTAssertEqual(burns.count, 1)
+        XCTAssertEqual(burns.first?.windowMins, 300)
+    }
+
+    func test_section_burnRateForecastBeyondReset_suppressed() {
+        let reset = now.addingTimeInterval(2 * 3600)
+        let history = [
+            sample(windowMins: 300, hoursAgo: 10, used: 10, resetsAt: reset),
+            sample(windowMins: 300, hoursAgo: 5, used: 20, resetsAt: reset),
+            sample(windowMins: 300, hoursAgo: 2, used: 30, resetsAt: reset),
+        ]
+        let state = makeState(fiveHourUsed: 35, fiveHourResetsAt: reset)
+        let s = PopupContentBuilder.section(state, now: now, history: history)
+        XCTAssertTrue(burnRates(s).isEmpty, "прогноз за пределами ресета должен подавляться")
     }
 }
 
