@@ -1,10 +1,15 @@
 import SwiftUI
 import MacLimitsTrackerCore
 
-/// Секция настроек провайдеров: чекбокс включения + кнопки вверх/вниз
-/// для смены порядка секций. Перенесено из `PopupFooter` без изменений.
-/// Состояние — только через `LimitsViewModel`, без прямого доступа к персистентности.
-/// Порядок объявления контролов сверху вниз — это и есть порядок фокуса.
+/// Секция настроек провайдеров: чекбокс включения, drag-переупорядочивание
+/// (List + onMove), кнопки вверх/вниз и сброс порядка к каноническому
+/// (bd mac-limits-tracker-med.2). Состояние — только через `LimitsViewModel`,
+/// без прямого доступа к персистентности.
+///
+/// Перестановка идёт через ID-команду `reorderProviders(_:before:)`, а НЕ
+/// через индексы видимых строк: проекция `providerSettingsWithDescriptors`
+/// отфильтровывает недоступные dynamic-провайдеры (Kimi без credentials),
+/// поэтому индексы строк не совпадают с индексами `providerSettings`.
 struct ProvidersSettingsSection: View {
     @ObservedObject var viewModel: LimitsViewModel
     let surface: ProviderOverviewSurface
@@ -16,16 +21,83 @@ struct ProvidersSettingsSection: View {
         }
     }
 
+    /// Высота строки списка — фиксированная оценка компактной строки, чтобы
+    /// List (жадно растущий по высоте) занял ровно столько места, сколько занимал
+    /// прежний VStack: попап имеет свободную высоту и иначе растянулся бы.
+    private var rowHeight: CGFloat {
+        switch surface {
+        case .menuBar: return 20
+        case .desktop: return 24
+        }
+    }
+
     var body: some View {
         let entries = viewModel.providerSettingsWithDescriptors
         VStack(alignment: .leading, spacing: 4) {
-            Text("Providers")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-            ForEach(Array(entries.enumerated()), id: \.element.setting.id) { index, entry in
-                providerRow(entry, isFirst: index == 0, isLast: index == entries.count - 1)
+            HStack {
+                Text("Providers")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Reset order") {
+                    viewModel.resetProviderOrder()
+                }
+                .buttonStyle(.borderless)
+                .controlSize(controlSize)
+                .disabled(isCanonicalOrder(entries))
+                .help("Restore the default provider order")
+                .accessibilityLabel("Reset provider order")
+                .accessibilityHint("Restores the default provider order")
             }
+            List {
+                ForEach(Array(entries.enumerated()), id: \.element.setting.id) { index, entry in
+                    providerRow(entry, isFirst: index == 0, isLast: index == entries.count - 1)
+                        .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
+                        .listRowSeparator(.hidden)
+                }
+                .onMove { source, destination in
+                    moveProviders(source: source, destination: destination, entries: entries)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .frame(height: CGFloat(entries.count) * rowHeight + 4)
         }
+    }
+
+    /// Переводит List.onMove offsets в ID-команду Core: какие id двигаем
+    /// (в исходном относительном порядке) и перед каким видимым id вставить
+    /// блок (`nil` — в конец). Скрытые dynamic-провайдеры не участвуют:
+    /// `reordered(ids:before:)` в Core сохраняет их позиции как есть.
+    private func moveProviders(
+        source: IndexSet, destination: Int,
+        entries: [(setting: ProviderSetting, descriptor: ProviderDescriptor)]
+    ) {
+        let visibleIds = entries.map { $0.setting.id }
+        let movingIds = source.sorted().map { visibleIds[$0] }
+        var reorderedVisible = visibleIds
+        reorderedVisible.move(fromOffsets: source, toOffset: destination)
+        let moving = Set(movingIds)
+        guard let lastMovedIndex = reorderedVisible.lastIndex(where: { moving.contains($0) }) else { return }
+        let targetId = lastMovedIndex + 1 < reorderedVisible.count
+            ? reorderedVisible[lastMovedIndex + 1]
+            : nil
+        viewModel.reorderProviders(movingIds, before: targetId)
+    }
+
+    /// Текущий видимый порядок совпадает с каноническим (порядок
+    /// ProviderRegistry, отфильтрованный по видимым)? Тогда Reset — no-op и
+    /// кнопка выключена. `makeDefault()` — дешёвый: подстановка путей +
+    /// проверка файлов, провайдеры только конструируются, не опрашиваются.
+    private func isCanonicalOrder(
+        _ entries: [(setting: ProviderSetting, descriptor: ProviderDescriptor)]
+    ) -> Bool {
+        let visibleIds = entries.map { $0.setting.id }
+        let visible = Set(visibleIds)
+        let canonicalVisibleIds = ProviderRegistry.makeDefault()
+            .map { $0.descriptor.id }
+            .filter { visible.contains($0) }
+        return visibleIds == canonicalVisibleIds
     }
 
     private func providerRow(
@@ -33,6 +105,10 @@ struct ProvidersSettingsSection: View {
         isFirst: Bool, isLast: Bool
     ) -> some View {
         HStack(spacing: 4) {
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+                .accessibilityLabel("Reorder \(entry.descriptor.displayName)")
+                .accessibilityHint("Drag to change the position in the providers list")
             Toggle(entry.descriptor.displayName, isOn: Binding(
                 get: { entry.setting.isEnabled },
                 set: { viewModel.setProviderEnabled($0, id: entry.setting.id) }
