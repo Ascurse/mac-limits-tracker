@@ -15,7 +15,8 @@ struct TUIStatusView: View {
                 sections: PopupContentBuilder.sections(
                     viewModel.states,
                     history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds),
+                    thresholds: viewModel.severityThresholds,
+                    costResult: viewModel.costEstimate),
                 theme: .tui,
                 surface: .menuBar)
             PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)

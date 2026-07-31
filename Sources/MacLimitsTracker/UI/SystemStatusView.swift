@@ -13,7 +13,8 @@ struct SystemStatusView: View {
                 sections: PopupContentBuilder.sections(
                     viewModel.states,
                     history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds),
+                    thresholds: viewModel.severityThresholds,
+                    costResult: viewModel.costEstimate),
                 theme: .system,
                 surface: .menuBar)
             Divider()

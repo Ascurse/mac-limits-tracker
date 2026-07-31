@@ -20,7 +20,8 @@ struct DesktopWindowView: View {
                 sections: PopupContentBuilder.sections(
                     viewModel.states,
                     history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds),
+                    thresholds: viewModel.severityThresholds,
+                    costResult: viewModel.costEstimate),
                 theme: viewModel.appTheme,
                 surface: .desktop)
             Spacer(minLength: 0)

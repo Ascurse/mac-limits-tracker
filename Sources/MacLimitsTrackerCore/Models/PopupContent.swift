@@ -7,8 +7,53 @@ public enum PopupRow: Equatable {
     case window(WindowContent)
     case sparkline(SparklineContent)
     case burnRate(BurnRateContent)
+    case cost(CostRowContent)
     case error(String)
     case note(String)
+}
+
+/// Состояние строки оценки стоимости — зеркало `CostEstimateResult`, но без
+/// Core-типов: UI-слой работает только с готовыми строками.
+public enum CostRowState: Equatable, Sendable {
+    case available
+    case incomplete
+    case unavailable
+}
+
+/// Строка оценки стоимости, готовая к показу. Несёт обязательную маркировку:
+/// это оценка (label), источник — локальные логи (sourceText), версия таблицы
+/// тарифов (pricingVersion, nil когда оценки нет вовсе) и состояние.
+///
+/// ВАЖНО (ревью 725.1): в `.incomplete` `CostEstimate.total` — сумма только
+/// ИЗВЕСТНЫХ оценённых записей, т.е. нижняя граница. valueText тогда имеет
+/// вид «≥ $X», а indicatorText явно говорит о неполноте — никогда не
+/// показываем неполную сумму как окончательный итог.
+public struct CostRowContent: Equatable, Sendable {
+    public let state: CostRowState
+    public let label: String           // "Cost estimate"
+    public let valueText: String       // "$12.34" / "≥ $12.34" / "unavailable"
+    public let sourceText: String      // "local logs"
+    public let pricingVersion: String? // версия тарифной таблицы
+    public let indicatorText: String?  // неполнота/причина недоступности
+
+    public init(state: CostRowState, label: String, valueText: String,
+                sourceText: String, pricingVersion: String?, indicatorText: String?) {
+        self.state = state
+        self.label = label
+        self.valueText = valueText
+        self.sourceText = sourceText
+        self.pricingVersion = pricingVersion
+        self.indicatorText = indicatorText
+    }
+
+    /// Сноска под значением: источник, версия тарифов и (если есть) индикатор
+    /// неполноты/причина недоступности — темы только стилизуют её.
+    public var footnoteText: String {
+        var parts = [sourceText]
+        if let pricingVersion { parts.append("pricing \(pricingVersion)") }
+        if let indicatorText { parts.append(indicatorText) }
+        return parts.joined(separator: " · ")
+    }
 }
 
 /// Одна точка спарклайна: отдельный struct, т.к. кортеж не синтезирует Equatable.
@@ -177,13 +222,86 @@ public enum PopupContentBuilder {
     /// Пакетная сборка секций для всех состояний — единое правило
     /// «state + history(providerId) + thresholds → ProviderSectionContent»,
     /// которое раньше дублировалось во всех 4 темах попапа.
+    /// `costResult` (агрегат по всем провайдерам, обновляется независимо от
+    /// квот) добавляет отдельную секцию оценки стоимости в конец.
     public static func sections(
         _ states: [ProviderState],
         now: Date = Date(),
         history: (String) -> [UsageSample] = { _ in [] },
-        thresholds: SeverityThresholds = .standard
+        thresholds: SeverityThresholds = .standard,
+        costResult: CostEstimateResult? = nil
     ) -> [ProviderSectionContent] {
-        states.map { section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds) }
+        var result = states.map { section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds) }
+        if let costResult { result.append(costSection(costResult)) }
+        return result
+    }
+
+    // MARK: - Оценка стоимости
+
+    /// Дескриптор секции оценки стоимости: агрегат по локальным логам всех
+    /// CLI, а не провайдер реестра — поэтому секция синтетическая.
+    public static let costDescriptor = ProviderDescriptor(
+        id: "cost", displayName: "Cost estimate", shortName: "Cost",
+        menuBarSymbol: "$", accentColorHex: 0x8E8E93, loginHelp: nil)
+
+    /// Форматтер денежной суммы оценки: всегда USD, два знака — Decimal
+    /// округляется до центов на отображении, расчёт остаётся точным.
+    /// Локаль en_US (не POSIX): POSIX форматирует валюту с пробелом («$ 1.23»).
+    private static let moneyFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.locale = Locale(identifier: "en_US")
+        return f
+    }()
+
+    /// Секция оценки стоимости из агрегированного результата Core-сервиса.
+    public static func costSection(_ result: CostEstimateResult) -> ProviderSectionContent {
+        ProviderSectionContent(descriptor: costDescriptor,
+                               title: costDescriptor.displayName,
+                               rows: [costRow(result)],
+                               isStale: false)
+    }
+
+    /// Маппинг ТОЛЬКО агрегата `CostEstimateResult` (bd 725.2). В `.incomplete`
+    /// total — нижняя граница (сумма известных оценённых записей), поэтому
+    /// показываем «≥ $X» с явным индикатором неполноты, а не итог.
+    public static func costRow(_ result: CostEstimateResult) -> PopupRow {
+        switch result {
+        case .available(let estimate, _):
+            return .cost(CostRowContent(
+                state: .available,
+                label: "Cost estimate",
+                valueText: moneyText(estimate.total),
+                sourceText: "local logs",
+                pricingVersion: estimate.pricingTableVersion,
+                indicatorText: nil))
+        case .incomplete(let estimate, _):
+            return .cost(CostRowContent(
+                state: .incomplete,
+                label: "Cost estimate",
+                valueText: "≥ \(moneyText(estimate.total))",
+                sourceText: "local logs",
+                pricingVersion: estimate.pricingTableVersion,
+                indicatorText: "lower bound — some usage unpriced"))
+        case .unavailable(let reason, _):
+            let reasonText: String
+            switch reason {
+            case .noLogsFound: reasonText = "no local logs found"
+            case .noPricedRecords: reasonText = "no priced records in logs"
+            }
+            return .cost(CostRowContent(
+                state: .unavailable,
+                label: "Cost estimate",
+                valueText: "unavailable",
+                sourceText: "local logs",
+                pricingVersion: nil,
+                indicatorText: reasonText))
+        }
+    }
+
+    private static func moneyText(_ amount: Decimal) -> String {
+        moneyFormatter.string(from: amount as NSDecimalNumber) ?? "\(amount)"
     }
 
     private static func rows(
