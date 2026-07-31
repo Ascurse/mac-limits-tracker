@@ -1,0 +1,29 @@
+name: CI
+
+# Гоняет сборку и тесты на каждый PR и push в main. Релизный пайплайн
+# (release.yml) срабатывает только по тегу v* — до этого гейта красный main
+# проскакивал незамеченным (см. дубликат RefreshIntervalTests, PR #61).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      # swift test собирает только тестовый таргет и его зависимости —
+      # приложение и VerifyCli в него не входят, поэтому сборка отдельно.
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
