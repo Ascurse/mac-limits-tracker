@@ -42,6 +42,12 @@ public enum AsciiSparkline {
             return blocks[index]
         }.joined()
     }
+
+    /// Трейлинг 7-дневный тренд (Core-модель `SparklineContent`): рендер его точек
+    /// спарклайном заданной ширины. Пустая история → пустая строка (не ложная серия).
+    public static func render(_ trend: SparklineContent, width: Int = 24) -> String {
+        render(usedPercents: trend.points.map(\.usedPercent), width: width)
+    }
 }
 
 /// Датчик темы TUI `[||||······]`: число заполненных делений (заполнено = остаток).
