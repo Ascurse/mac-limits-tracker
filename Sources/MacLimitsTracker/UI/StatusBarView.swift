@@ -48,8 +48,9 @@ public struct StatusBarView: View {
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
-            .help("Open Limits Tracker in a regular window (Dock, Cmd-Tab, Window menu)")
+            .help("Open Limits Tracker in a regular window (⌘0)")
             .accessibilityLabel("Open Limits Tracker in Window")
+            .keyboardShortcut("0", modifiers: .command)
             Button {
                 openSettings()
             } label: {
@@ -58,8 +59,9 @@ public struct StatusBarView: View {
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
-            .help("Open Settings (Cmd-,)")
+            .help("Open Settings (⌘,)")
             .accessibilityLabel("Open Settings")
+            .keyboardShortcut(",", modifiers: .command)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
