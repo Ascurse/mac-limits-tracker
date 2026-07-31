@@ -121,6 +121,174 @@ Swift Package с тремя таргетами:
 - Темы (`UI/*StatusView.swift`) — тупые рендеры `PopupRow`; provider-специфичная
   логика запрещена в UI-слое, только в `Core/Providers` и мапперах.
 
+## Headless UI-тесты (без запуска приложения)
+
+Темы попапа и десктоп-виджет рендерят одно и то же состояние, но код view лежит в
+executable target `MacLimitsTracker`, который test target `MacLimitsTrackerTests`
+импортировать не может. Поэтому headless-тесты идут через чистую модель контента
+`ProviderSectionContent` из `PopupContentBuilder.section(state:now:history:thresholds:)`
+(`Sources/MacLimitsTrackerCore/Models/PopupContent.swift`). Все темы получают эту
+модель через `ProviderOverview` и отличаются только визуальной подачей, поэтому
+один набор тестов на контент покрывает Terminal / Phosphor / TUI / System.
+
+### Что покрывается этим стеком
+
+- Структура и текст секции провайдера: окна, спарклайны, детали, ошибки,
+  заглушки (`"… usage unavailable"`, `"Loading…"`).
+- Поведенческие различия: пустой слот vs отсутствующий слот, stale-состояние,
+  сортировка строк.
+- Правила `PopupContentBuilder` — единый источник истины для всех тем.
+
+### Что НЕ покрывается
+
+- Сами view в `Sources/MacLimitsTracker/UI/*StatusView.swift` — они в
+  executable target и недоступны тестам.
+- `DesktopWidgetView` — тоже в executable target; виджет рисует собственный
+  layout напрямую из `viewModel.states`, не через `ProviderOverview`.
+- `AppDelegate` и `DesktopWidgetController` — работают с `NSStatusItem`,
+  `NSPopover`, `NSPanel` и реальными window-сессиями; это уровень UI-тестов,
+  запускающих приложение, а не `swift test`.
+- Визуальные детали тем (цвета, шрифты, отступы, анимации, ASCII-бары) —
+  они не попадают в `ProviderSectionContent`.
+
+### Минимальный шаблон теста поведения (ViewInspector)
+
+```swift
+import SwiftUI
+import ViewInspector
+import XCTest
+@testable import MacLimitsTrackerCore
+
+final class PhosphorStatusViewBehaviorTests: XCTestCase {
+    private let descriptor = ProviderDescriptor(
+        id: "claude", displayName: "Claude Code", shortName: "Claude",
+        menuBarSymbol: "C", accentColorHex: 0xFF9E64, loginHelp: nil
+    )
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func state(usedPercent: Double?) -> ProviderState {
+        let snapshot = LimitsSnapshot(
+            loggedIn: true, plan: "max",
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: usedPercent, resetsAt: nil)],
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: nil, fetchedAt: now
+        )
+        return ProviderState(descriptor: descriptor, snapshot: snapshot)
+    }
+
+    func test_nilUsedPercent_rendersUsageUnavailable() throws {
+        let section = PopupContentBuilder.section(state(usedPercent: nil), now: now)
+
+        // Проверяем модель контента: пустой слот не рендерит window-строку.
+        XCTAssertFalse(section.rows.contains { if case .window = $0 { return true }; return false })
+        XCTAssertTrue(section.rows.contains { if case .note(let t) = $0 { return t.contains("usage unavailable") }; return false })
+
+        // Минимальный рендер: в Terminal/Phosphor/TUI note-строка — Text(text).
+        let sut = NoteRow(text: "5h usage unavailable")
+        let inspected = try sut.inspect().find(text: "5h usage unavailable")
+        XCTAssertFalse(try inspected.string().isEmpty)
+    }
+}
+
+private struct NoteRow: View {
+    let text: String
+    var body: some View { Text(text) }
+}
+
+extension NoteRow: Inspectable {}
+```
+
+Аналогичный тест для Terminal см. в
+`Tests/MacLimitsTrackerTests/TerminalStatusViewBehaviorTests.swift` (bd-t9e.2).
+
+### Минимальный шаблон snapshot-теста (.dump)
+
+```swift
+import SnapshotTesting
+import XCTest
+@testable import MacLimitsTrackerCore
+
+final class TUIStatusViewSnapshotTests: XCTestCase {
+    private let descriptor = ProviderDescriptor(
+        id: "claude", displayName: "Claude Code", shortName: "Claude",
+        menuBarSymbol: "C", accentColorHex: 0xFF9E64, loginHelp: nil
+    )
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func state(windows: [SnapshotWindow]) -> ProviderState {
+        let snapshot = LimitsSnapshot(
+            loggedIn: true, plan: "max", windows: windows,
+            creditsBalance: nil, rateLimitReachedType: nil,
+            details: [SnapshotDetail(key: "Email", value: "a@b.co")],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: nil, fetchedAt: now
+        )
+        return ProviderState(descriptor: descriptor, snapshot: snapshot)
+    }
+
+    private func sample(windowMins: Int, hoursAgo: Double, used: Double) -> UsageSample {
+        UsageSample(providerId: "claude", windowMins: windowMins,
+                    fetchedAt: now.addingTimeInterval(-hoursAgo * 3600),
+                    usedPercent: used, resetsAt: nil)
+    }
+
+    func test_dump_populatedState() {
+        let section = PopupContentBuilder.section(
+            state(windows: [
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 42, resetsAt: nil),
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 69, resetsAt: nil)
+            ]),
+            now: now,
+            history: [
+                sample(windowMins: 300, hoursAgo: 10, used: 20),
+                sample(windowMins: 300, hoursAgo: 5, used: 30),
+                sample(windowMins: 300, hoursAgo: 2, used: 40)
+            ]
+        )
+        assertSnapshot(of: section, as: .dump)
+    }
+}
+```
+
+`.dump` записывает дерево `ProviderSectionContent` в
+`Tests/MacLimitsTrackerTests/__Snapshots__/{TestClass}/{testName}.1.txt`.
+Снапшот детерминирован, если:
+
+- `now` зафиксирован (`Date(timeIntervalSince1970:)`),
+- `resetsAt` везде `nil` (иначе `RelativeDateTimeFormatter` зависит от локали
+  раннера),
+- история спарклайна задана явно и лежит внутри 7-дневного окна от `now`.
+
+### Переиспользование между темами
+
+Все четыре темы (`SystemStatusView`, `TerminalStatusView`, `PhosphorStatusView`,
+`TUIStatusView`) вызывают `ProviderOverview` с одним и тем же
+`PopupContentBuilder.sections(...)`. Поэтому для новой темы не нужен отдельный
+snapshot: достаточно проверить, что она использует тот же билдер и тот же
+`ProviderSectionContent`. Практический приём: один общий класс
+`StatusViewSnapshotTests`, параметризованный дескриптором/состоянием, плюс
+минимальный ViewInspector-тест на рендер `.note`/`Text`, если тема имеет
+особое оформление строк.
+
+### DesktopWidgetView
+
+Виджет не использует `ProviderOverview` и строит собственный `[LimitWindow]`
+прямо в view. Этот код пока в executable target, поэтому headless snapshot
+стека (Core + `swift test`) его не покрывает. Можно тестировать входные данные:
+`LimitsSnapshot`, `SnapshotResolver.resolve`, `Severity.from` и
+`LimitsFormatting` — они в Core. Чтобы покрыть layout виджета, нужно либо
+вынести сборку `LimitWindow` в Core, либо поднимать UI-тест с запущенным app.
+
+### Проверка перед коммитом
+
+```bash
+swift test
+```
+
+Тесты должны проходить без запуска приложения и без `XCTest` в `MacLimitsTracker`
+executable target.
+
 ## Общая память проекта
 
 Конвенция журнала `docs/journal/` (decisions/gotchas/glossary) — чтение перед задачей, grep перед правкой файла, дозапись после находки — описана в [AGENTS.md](AGENTS.md), секция «Общая память проекта». Следуй ей; здесь не дублируется.
