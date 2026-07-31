@@ -515,11 +515,12 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
     }
 
     func test_section_withHistory_insertsSparklineAfterMatchingWindowRow() {
-        // Порядок входных сэмплов намеренно не хронологический.
+        // Входные сэмплы хронологические: контракт PopupContentBuilder — HistoryStore
+        // отдаёт их уже отсортированными по времени (сортировка в билдере убрана, bd #80).
         let history = [
-            sample(windowMins: 300, hoursAgo: 2, used: 40),
             sample(windowMins: 300, hoursAgo: 10, used: 20),
             sample(windowMins: 300, hoursAgo: 5, used: 30),
+            sample(windowMins: 300, hoursAgo: 2, used: 40),
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
 
