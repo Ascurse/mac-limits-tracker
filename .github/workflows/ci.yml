@@ -16,7 +16,11 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-14
+    # macos-15, а не macos-14: в образе macos-14 Swift 5.10, а транзитивная
+    # зависимость swift-custom-dump (через swift-snapshot-testing) требует
+    # tools-version 6.1. platforms: .macOS(.v14) в Package.swift — это
+    # минимальная цель развёртывания, она новее образ не запрещает.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
