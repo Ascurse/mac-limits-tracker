@@ -83,6 +83,7 @@ public enum Severity: Equatable, Sendable {
         thresholds: SeverityThresholds = .standard
     ) -> Severity {
         var worst: Severity = .normal
+        outerLoop:
         for state in states {
             let resolved = SnapshotResolver.resolve(state)
             guard let snapshot = resolved.snapshot,
@@ -96,7 +97,7 @@ public enum Severity: Equatable, Sendable {
                 )
                 if isMoreSevere(severity, than: worst) {
                     worst = severity
-                    if worst == .critical { return .critical }
+                    if worst == .critical { break outerLoop }
                 }
             }
         }

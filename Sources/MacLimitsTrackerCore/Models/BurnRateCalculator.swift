@@ -50,7 +50,6 @@ public enum BurnRateCalculator {
                 return sampleResetsAt == currentResetsAt
             }
             .filter { $0.fetchedAt <= now }
-            .sorted { $0.fetchedAt < $1.fetchedAt }
 
         guard relevantSamples.count >= minimumSampleCount else { return nil }
 
