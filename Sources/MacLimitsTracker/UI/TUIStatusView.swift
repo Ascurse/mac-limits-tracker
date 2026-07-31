@@ -37,11 +37,13 @@ struct TUIStatusView: View {
             Button {
                 viewModel.refresh()
             } label: {
-                keyBadge("F5 refresh")
+                keyBadge("⌘R refresh")
             }
             .buttonStyle(.plain)
             .disabled(viewModel.isRefreshing)
+            .help(viewModel.isRefreshing ? "Refreshing…" : "Refresh (⌘R)")
             .accessibilityLabel("Refresh")
+            .keyboardShortcut("r", modifiers: .command)
         }
     }
 

@@ -42,7 +42,9 @@ struct PhosphorStatusView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.isRefreshing)
+            .help(viewModel.isRefreshing ? "Refreshing…" : "Refresh (⌘R)")
             .accessibilityLabel("Refresh")
+            .keyboardShortcut("r", modifiers: .command)
         }
     }
 

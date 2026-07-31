@@ -62,7 +62,9 @@ struct DesktopWindowView: View {
             }
             .buttonStyle(.borderless)
             .disabled(viewModel.isRefreshing)
+            .help(viewModel.isRefreshing ? "Refreshing…" : "Refresh (⌘R)")
             .accessibilityLabel("Refresh")
+            .keyboardShortcut("r", modifiers: .command)
         }
     }
 }
