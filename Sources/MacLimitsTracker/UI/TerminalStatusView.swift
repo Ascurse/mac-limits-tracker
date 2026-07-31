@@ -15,7 +15,8 @@ struct TerminalStatusView: View {
                 sections: PopupContentBuilder.sections(
                     viewModel.states,
                     history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds),
+                    thresholds: viewModel.severityThresholds,
+                    costResult: viewModel.costEstimate),
                 theme: .terminal,
                 surface: .menuBar)
             Rectangle().fill(TerminalPalette.track).frame(height: 1)
