@@ -121,6 +121,11 @@ struct SystemOverviewBody: View {
             Text(burn.text)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        case .cost(let c):
+            detailRow(c.label, c.valueText)
+            Text(c.footnoteText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .error(let message):
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
@@ -250,10 +255,28 @@ struct TerminalOverviewBody: View {
                 .font(.caption)
                 .foregroundStyle(terminalPaceColor(burn.pace))
                 .padding(.leading, 26)
+        case .cost(let c):
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(c.label.lowercased()).foregroundStyle(Palette.dim)
+                    Spacer(minLength: 8)
+                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
+                        .foregroundStyle(costValueColor(c.state))
+                }
+                Text(c.footnoteText).foregroundStyle(Palette.dim)
+            }
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
         case .note(let text):
             Text(text).foregroundStyle(Palette.dim)
+        }
+    }
+
+    private func costValueColor(_ state: CostRowState) -> Color {
+        switch state {
+        case .available:   return Palette.fg
+        case .incomplete:  return Palette.warning
+        case .unavailable: return Palette.dim
         }
     }
 
@@ -374,6 +397,16 @@ struct PhosphorOverviewBody: View {
                 .font(.caption)
                 .foregroundStyle(Palette.mid)
                 .padding(.leading, 26)
+        case .cost(let c):
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text(c.label.lowercased()).foregroundStyle(Palette.mid)
+                    Spacer(minLength: 8)
+                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
+                        .foregroundStyle(c.state == .unavailable ? Palette.mid : Palette.bright)
+                }
+                Text(c.footnoteText).foregroundStyle(Palette.mid)
+            }
         case .error(let message):
             Text("! \(message)").foregroundStyle(Palette.heading)
         case .note(let text):
@@ -476,6 +509,16 @@ struct TUIOverviewBody: View {
                 .font(.caption)
                 .foregroundStyle(tuiPaceColor(burn.pace))
                 .padding(.leading, 24)
+        case .cost(let c):
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text(c.label.lowercased()).foregroundStyle(Palette.dim)
+                    Spacer(minLength: 8)
+                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
+                        .foregroundStyle(costValueColor(c.state))
+                }
+                Text(c.footnoteText).foregroundStyle(Palette.dim)
+            }
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
         case .note(let text):
@@ -524,6 +567,14 @@ struct TUIOverviewBody: View {
         case .fast:     return Palette.critical
         case .moderate: return Palette.warning
         case .slow:     return Palette.dim
+        }
+    }
+
+    private func costValueColor(_ state: CostRowState) -> Color {
+        switch state {
+        case .available:   return Palette.fg
+        case .incomplete:  return Palette.warning
+        case .unavailable: return Palette.dim
         }
     }
 }

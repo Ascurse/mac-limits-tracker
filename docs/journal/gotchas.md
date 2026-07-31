@@ -21,6 +21,13 @@
 
 ---
 
+## 2026-08-01 — Stacked PR: содержимое дочернего PR не попадает в main, хотя GitHub показывает MERGED
+
+**Симптом:** PR помечен MERGED, задача закрыта как сделанная, но кода в `main` нет — здесь так потерялась вся UI-интеграция оценки стоимости (Core-сервис в `main` был, а ни одной строки рендера — нет).
+**Причина:** у дочернего PR base указывал на ветку-родителя, а родительский PR успел смержиться и удалить эту ветку раньше — дочерний merge ушёл в осиротевшую ветку. Разрыв был 30 секунд.
+**Обход:** закрывая задачу по факту мержа, проверять не статус PR, а `git merge-base --is-ancestor <merge-sha> origin/main`. Восстановление: коммит жив на GitHub по SHA и без ветки — `git fetch origin <sha>`, затем cherry-pick не merge-коммита, а его content-родителя. Профилактика: ретаргетить base дочернего PR на `main` до мержа родителя.
+**Где это в коде:** [Sources/MacLimitsTrackerCore/Models/PopupContent.swift](../../Sources/MacLimitsTrackerCore/Models/PopupContent.swift), [Sources/MacLimitsTracker/UI/ProviderOverview.swift](../../Sources/MacLimitsTracker/UI/ProviderOverview.swift), [Sources/MacLimitsTrackerCore/Cost/](../../Sources/MacLimitsTrackerCore/Cost/).
+
 ## 2026-08-01 — Образ GitHub Actions отстаёт от локального Swift на два мажора
 
 **Симптом:** локально `swift build && swift test` зелёные, а тот же коммит в CI падает — сначала на резолве зависимостей («package 'swift-custom-dump' @ 1.6.1 is using Swift tools version 6.1.0 but the installed version is 5.10.0»), а после подъёма образа до `macos-15` — на компиляции («the compiler is unable to type-check this expression in reasonable time», `ProviderOverview.swift:568`).

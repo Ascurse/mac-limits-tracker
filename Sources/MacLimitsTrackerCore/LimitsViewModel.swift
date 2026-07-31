@@ -1,6 +1,15 @@
 import Foundation
 import SwiftUI
 
+/// Источник оценки стоимости — протокол для подмены в тестах: реальный
+/// сервис (`LocalCostEstimateService`) читает локальные логи CLI, в тестах
+/// домашняя директория не трогается.
+public protocol CostEstimating: Sendable {
+    func estimate(period: CostPeriod, now: Date, calendar: Calendar) -> CostEstimateResult
+}
+
+extension LocalCostEstimateService: CostEstimating {}
+
 /// Состояние статус-бара: агрегирует состояния зарегистрированных провайдеров, таймер автообновления.
 @MainActor
 public final class LimitsViewModel: ObservableObject {
@@ -24,13 +33,19 @@ public final class LimitsViewModel: ObservableObject {
     @Published public private(set) var menuBarDisplayMode: MenuBarDisplayMode
     /// Показывать десктопный виджет — персистится в AppSettingsStore.
     @Published public private(set) var showDesktopWidget: Bool
+    /// Последняя оценка стоимости из локальных логов (агрегат по CLI).
+    /// nil до первого refreshCostEstimate(). Обновляется НЕЗАВИСИМО от
+    /// refresh() квот — отдельный путь и отдельный Task (bd 725.2).
+    @Published public private(set) var costEstimate: CostEstimateResult?
 
     private var allProviders: [any LimitsProvider]
     private let dynamicProviders: [DynamicProviderSpec]
     private let settingsStore: ProviderSettingsStore
     private let appSettingsStore: AppSettingsStore
     private let historyStore: HistoryStore
+    private let costService: any CostEstimating
     private var refreshTask: Task<Void, Never>?
+    private var costRefreshTask: Task<Void, Never>?
     private var timer: Timer?
     /// Идемпотентность start(): повторные вызовы от ре-активации поверхностей — no-op.
     private var hasStarted = false
@@ -44,13 +59,15 @@ public final class LimitsViewModel: ObservableObject {
         settingsStore: ProviderSettingsStore = ProviderSettingsStore(),
         appSettingsStore: AppSettingsStore = AppSettingsStore(),
         historyStore: HistoryStore = HistoryStore(),
-        dynamicProviders: [DynamicProviderSpec] = []
+        dynamicProviders: [DynamicProviderSpec] = [],
+        costService: any CostEstimating = LocalCostEstimateService()
     ) {
         self.allProviders = providers
         self.dynamicProviders = dynamicProviders
         self.settingsStore = settingsStore
         self.appSettingsStore = appSettingsStore
         self.historyStore = historyStore
+        self.costService = costService
         let settings = settingsStore.settings(for: Self.settingsIds(providers: providers, specs: dynamicProviders))
         self.providerSettings = settings
         self.states = Self.enabledProviders(providers, settings: settings)
@@ -91,12 +108,16 @@ public final class LimitsViewModel: ObservableObject {
     deinit {
         timer?.invalidate()
         refreshTask?.cancel()
+        costRefreshTask?.cancel()
     }
 
     public func start(_ initial: Bool = true) {
         guard !hasStarted else { return }
         hasStarted = true
-        if initial { refresh() }
+        if initial {
+            refresh()
+            refreshCostEstimate()
+        }
         startTimer()
     }
 
@@ -121,6 +142,26 @@ public final class LimitsViewModel: ObservableObject {
                 self.recordHistory(providers: providers, snapshots: snapshots)
                 self.isRefreshing = false
             }
+        }
+    }
+
+    /// Период агрегации оценки стоимости, показываемой в попапе.
+    private static let costEstimatePeriod: CostPeriod = .last7Days
+
+    /// Обновление оценки стоимости — собственный путь, НЕЗАВИСИМЫЙ от
+    /// refresh() квот: свой Task со своей дисциплиной отмены (как у
+    /// refreshTask), не отменяется refresh() и не блокируется ошибками
+    /// провайдеров. Чтение локальных логов — потенциально медленный
+    /// СИНХРОННЫЙ I/O, поэтому Task.detached: обычный Task унаследовал бы
+    /// MainActor и заблокировал бы главный поток на всё время сканирования
+    /// (в отличие от refresh(), где fetchAll сразу уходит в await).
+    public func refreshCostEstimate() {
+        costRefreshTask?.cancel()
+        let service = costService
+        costRefreshTask = Task.detached { [weak self] in
+            let result = service.estimate(period: Self.costEstimatePeriod, now: Date(), calendar: .current)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.costEstimate = result }
         }
     }
 
@@ -197,7 +238,10 @@ public final class LimitsViewModel: ObservableObject {
         guard autoRefresh else { return }
         timer = Timer.scheduledTimer(withTimeInterval: autoRefreshInterval.timeInterval, repeats: true) {
             [weak self] _ in
-            Task { @MainActor [weak self] in self?.refresh() }
+            Task { @MainActor [weak self] in
+                self?.refresh()
+                self?.refreshCostEstimate()
+            }
         }
     }
 
