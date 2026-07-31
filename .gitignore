@@ -19,6 +19,9 @@
 # bd worktrees
 .worktrees/
 
+# Team/agent worktrees — иначе git add -A затягивает вложенные репозитории как gitlink
+.claude/worktrees/
+
 # OpenCode session state
 .omo/
 
