@@ -251,15 +251,15 @@ public enum PopupContentBuilder {
         rangeEnd: Date,
         maxPoints: Int = 24
     ) -> [SparklinePoint] {
-        let sorted = samples.sorted { $0.time < $1.time }
-        guard sorted.count > maxPoints else { return sorted }
+        // samples is already sorted by time from HistoryStore
+        guard samples.count > maxPoints else { return samples }
 
         let totalInterval = rangeEnd.timeIntervalSince(rangeStart)
-        guard totalInterval > 0 else { return Array(sorted.suffix(maxPoints)) }
+        guard totalInterval > 0 else { return Array(samples.suffix(maxPoints)) }
 
         let bucketDuration = totalInterval / Double(maxPoints)
         var latestByBucket: [Int: SparklinePoint] = [:]
-        for point in sorted {
+        for point in samples {
             let offset = point.time.timeIntervalSince(rangeStart)
             let bucketIndex = min(maxPoints - 1, max(0, Int(offset / bucketDuration)))
             latestByBucket[bucketIndex] = point
