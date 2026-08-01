@@ -41,16 +41,16 @@ public enum BurnRateCalculator {
         currentResetsAt: Date?,
         now: Date
     ) -> BurnRate? {
-        let relevantSamples = samples
-            .filter { $0.windowMins == windowMins }
-            .filter { sample in
-                // Отсекаем сэмплы предыдущего окна, если известен ресет.
-                guard let currentResetsAt else { return true }
-                guard let sampleResetsAt = sample.resetsAt else { return false }
-                return sampleResetsAt == currentResetsAt
+        // samples is already sorted by time from HistoryStore
+        var relevantSamples: [UsageSample] = []
+        for sample in samples {
+            if sample.windowMins != windowMins { continue }
+            if let currentResetsAt {
+                if sample.resetsAt != currentResetsAt { continue }
             }
-            .filter { $0.fetchedAt <= now }
-            .sorted { $0.fetchedAt < $1.fetchedAt }
+            if sample.fetchedAt > now { continue }
+            relevantSamples.append(sample)
+        }
 
         guard relevantSamples.count >= minimumSampleCount else { return nil }
 
