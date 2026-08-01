@@ -92,7 +92,6 @@ public final class HistoryStore {
                     && $0.windowMins == windowMins
                     && $0.fetchedAt >= since
             }
-            .sorted { $0.fetchedAt < $1.fetchedAt }
     }
 
     public func samples(
@@ -104,7 +103,6 @@ public final class HistoryStore {
                 $0.providerId == providerId
                     && $0.fetchedAt >= since
             }
-            .sorted { $0.fetchedAt < $1.fetchedAt }
     }
 
     private func persist() {
