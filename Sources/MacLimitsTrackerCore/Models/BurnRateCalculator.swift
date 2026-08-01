@@ -41,13 +41,15 @@ public enum BurnRateCalculator {
         currentResetsAt: Date?,
         now: Date
     ) -> BurnRate? {
-        // samples is already sorted by time from HistoryStore
+        // Один проход вместо цепочки filter: HistoryStore отдаёт сэмплы в порядке
+        // добавления, а внутри одного (providerId, windowMins) он хронологический —
+        // поэтому пересортировка не нужна, порядок сохраняется как есть.
+        // Сэмплы предыдущего окна отсекаем по ресету (nil resetsAt при известном
+        // currentResetsAt тоже отбрасываем).
         var relevantSamples: [UsageSample] = []
         for sample in samples {
             if sample.windowMins != windowMins { continue }
-            if let currentResetsAt {
-                if sample.resetsAt != currentResetsAt { continue }
-            }
+            if let currentResetsAt, sample.resetsAt != currentResetsAt { continue }
             if sample.fetchedAt > now { continue }
             relevantSamples.append(sample)
         }

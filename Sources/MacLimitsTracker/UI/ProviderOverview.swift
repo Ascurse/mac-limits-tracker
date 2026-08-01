@@ -539,6 +539,7 @@ struct TUIOverviewBody: View {
             + Text("]")
         )
         .foregroundStyle(Palette.dim)
+        .accessibilityHidden(true)
     }
 
     // Спарклайн [▁▂▄█…] 7d в стиле датчика: заполнено = использовано, ширина 24 глифа.
@@ -552,6 +553,8 @@ struct TUIOverviewBody: View {
         )
         .foregroundStyle(Palette.dim)
         .padding(.leading, 24)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("7-day usage trend")
     }
 
     private func severityColor(_ severity: Severity) -> Color {

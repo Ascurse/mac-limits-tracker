@@ -81,6 +81,9 @@ public final class HistoryStore {
         persist()
     }
 
+    /// Сэмплы одного окна — гарантированно в хронологическом порядке: `append`
+    /// либо дописывает в конец, либо обновляет последний сэмпл этого же ключа.
+    /// Поэтому потребителям пересортировка не нужна.
     public func samples(
         providerId: String,
         windowMins: Int,
@@ -94,6 +97,10 @@ public final class HistoryStore {
             }
     }
 
+    /// Сэмплы всех окон провайдера. ВНИМАНИЕ: хронологический порядок здесь
+    /// гарантирован только внутри одного `windowMins` — дедупликация в `append`
+    /// сдвигает `fetchedAt` у сэмпла, стоящего раньше сэмплов других окон.
+    /// Потребитель обязан сначала сгруппировать по `windowMins`.
     public func samples(
         providerId: String,
         since: Date
@@ -119,7 +126,7 @@ public final class HistoryStore {
             let created = FileManager.default.createFile(
                 atPath: tmpURL.path,
                 contents: data,
-                attributes: nil
+                attributes: [.posixPermissions: 0o600]
             )
             guard created else { return }
             _ = try? FileManager.default.replaceItemAt(fileURL, withItemAt: tmpURL)
