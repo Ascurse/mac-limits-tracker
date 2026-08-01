@@ -121,7 +121,7 @@ public final class HistoryStore {
             let created = FileManager.default.createFile(
                 atPath: tmpURL.path,
                 contents: data,
-                attributes: nil
+                attributes: [.posixPermissions: 0o600]
             )
             guard created else { return }
             _ = try? FileManager.default.replaceItemAt(fileURL, withItemAt: tmpURL)
