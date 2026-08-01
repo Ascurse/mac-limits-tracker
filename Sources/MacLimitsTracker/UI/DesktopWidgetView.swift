@@ -153,6 +153,8 @@ struct DesktopWidgetView: View {
                 .tint(barColor(window.severity, accent: color))
                 .scaleEffect(x: 1, y: 0.6, anchor: .center)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(window.label) limit, \(Int(window.remainingPercent.rounded()))% remaining, resets \(window.resetText)")
     }
 
     private func barColor(_ severity: Severity, accent: Color) -> Color {

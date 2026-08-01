@@ -64,5 +64,6 @@ struct PhosphorStatusView: View {
                     .easeInOut(duration: 0.6)
                 }
         }
+        .accessibilityHidden(true)
     }
 }
