@@ -107,8 +107,7 @@ struct ProvidersSettingsSection: View {
         HStack(spacing: 4) {
             Image(systemName: "line.3.horizontal")
                 .foregroundStyle(.tertiary)
-                .accessibilityLabel("Reorder \(entry.descriptor.displayName)")
-                .accessibilityHint("Drag to change the position in the providers list")
+                .accessibilityHidden(true)
             Toggle(entry.descriptor.displayName, isOn: Binding(
                 get: { entry.setting.isEnabled },
                 set: { viewModel.setProviderEnabled($0, id: entry.setting.id) }
