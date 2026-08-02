@@ -8,3 +8,6 @@
 ## 2026-08-01 - ASCII UI and Screen Readers
 **Learning:** Text-based ASCII art (like custom `[|||···]` progress bars, sparklines, or terminal UI elements like `$ ▮`) creates a terrible, noisy experience for VoiceOver users by forcing the screen reader to enumerate punctuation and symbols character-by-character.
 **Action:** When building ASCII-heavy themes (like Terminal/TUI), explicitly wrap these components with `.accessibilityHidden(true)` if they are purely decorative, or use `.accessibilityElement(children: .ignore)` and apply a semantic `.accessibilityLabel` for informative UI.
+## 2026-08-01 - [ASCII UI and Screen Readers]
+**Learning:** Text-based ASCII art (like custom `[|||···]` progress bars, sparklines, or terminal UI elements like `$ ▮`) creates a terrible, noisy experience for VoiceOver users by forcing the screen reader to enumerate punctuation and symbols character-by-character.
+**Action:** When building ASCII-heavy themes (like Terminal/TUI), explicitly wrap these components with `.accessibilityHidden(true)` if they are purely decorative, or use `.accessibilityElement(children: .ignore)` and apply a semantic `.accessibilityLabel` for informative UI.

@@ -250,6 +250,8 @@ struct TerminalOverviewBody: View {
              + Text(AsciiSparkline.render(spark)))
                 .foregroundStyle(accent)
                 .padding(.leading, 26)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("7-day usage trend")
         case .burnRate(let burn):
             Text(burn.text)
                 .font(.caption)
@@ -376,8 +378,10 @@ struct PhosphorOverviewBody: View {
                         Text(AsciiBar.render(remainingPercent: w.remainingPercent))
                             .foregroundStyle(Palette.bg)
                             .background(Palette.bright)
+                            .accessibilityHidden(true)
                     } else {
                         Text(AsciiBar.render(remainingPercent: w.remainingPercent))
+                            .accessibilityHidden(true)
                     }
                     Text(w.remainingText).monospacedDigit()
                 }
@@ -392,6 +396,8 @@ struct PhosphorOverviewBody: View {
              + Text(AsciiSparkline.render(spark)))
                 .foregroundStyle(Palette.mid)
                 .padding(.leading, 26)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("7-day usage trend")
         case .burnRate(let burn):
             Text(burn.text)
                 .font(.caption)
