@@ -96,10 +96,23 @@ public enum BurnRateCalculator {
     private static func linearRegressionSlope(x: [Double], y: [Double]) -> Double? {
         precondition(x.count == y.count)
         let n = Double(x.count)
-        let sumX = x.reduce(0, +)
-        let sumY = y.reduce(0, +)
-        let sumXY = zip(x, y).map(*).reduce(0, +)
-        let sumXX = x.map { $0 * $0 }.reduce(0, +)
+
+        // ⚡ Bolt: Single-pass iteration to minimize intermediate array
+        // allocations and lower memory pressure compared to chaining higher-order
+        // functions like .map and .reduce
+        var sumX: Double = 0
+        var sumY: Double = 0
+        var sumXY: Double = 0
+        var sumXX: Double = 0
+
+        for i in 0..<x.count {
+            let xi = x[i]
+            let yi = y[i]
+            sumX += xi
+            sumY += yi
+            sumXY += xi * yi
+            sumXX += xi * xi
+        }
 
         let denominator = n * sumXX - sumX * sumX
         guard denominator > 0 else { return nil }
