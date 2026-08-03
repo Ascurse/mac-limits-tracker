@@ -9,6 +9,7 @@ public enum PopupRow: Equatable {
     case burnRate(BurnRateContent)
     case cost(CostRowContent)
     case error(String)
+    case recovery(ProviderRecoveryContent)
     case note(String)
 }
 
@@ -267,10 +268,10 @@ public enum PopupContentBuilder {
         thresholds: SeverityThresholds = .standard
     ) -> ProviderSectionContent {
         let resolved = SnapshotResolver.resolve(state)
-        var rows = rows(for: resolved.snapshot, now: now, history: history, thresholds: thresholds)
+        var rows = rows(for: state.descriptor, snapshot: resolved.snapshot, now: now, history: history, thresholds: thresholds)
         if resolved.isStale, let snapshot = resolved.snapshot, let error = resolved.error {
             rows.append(.note("updated \(relativeFormatter.localizedString(for: snapshot.fetchedAt, relativeTo: now))"))
-            rows.append(.error(error))
+            rows.append(.recovery(ProviderErrorRecoveryMapper.recover(rawError: error, providerName: state.descriptor.displayName)))
         }
         return ProviderSectionContent(descriptor: state.descriptor,
                                       title: state.descriptor.displayName,
@@ -364,16 +365,19 @@ public enum PopupContentBuilder {
     }
 
     private static func rows(
-        for snapshot: LimitsSnapshot?,
+        for descriptor: ProviderDescriptor,
+        snapshot: LimitsSnapshot?,
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
         guard let snap = snapshot else { return [.note("Loading…")] }
-        if let e = snap.providerError { return [.error(e)] }
+        if let e = snap.providerError {
+            return [.recovery(ProviderErrorRecoveryMapper.recover(rawError: e, providerName: descriptor.displayName))]
+        }
 
         var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
-        rows.append(contentsOf: usageRows(snap, now: now, history: history, thresholds: thresholds))
+        rows.append(contentsOf: usageRows(for: descriptor, snap, now: now, history: history, thresholds: thresholds))
         rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
         rows.append(contentsOf: renewalRows(snap, now: now))
         return rows
@@ -382,13 +386,14 @@ public enum PopupContentBuilder {
     /// Окна + кредиты + ошибка rate-limit; либо usageError, либо «Loading usage…»,
     /// если usage ещё не загружен.
     private static func usageRows(
+        for descriptor: ProviderDescriptor,
         _ snap: LimitsSnapshot,
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds
     ) -> [PopupRow] {
         guard let windows = snap.windows else {
-            if let ue = snap.usageError { return [.error(ue)] }
+            if let ue = snap.usageError { return [.recovery(ProviderErrorRecoveryMapper.recover(rawError: ue, providerName: descriptor.displayName))] }
             return [.note("Loading usage…")]
         }
         var rows = windowRows(windows, now: now, history: history, thresholds: thresholds)

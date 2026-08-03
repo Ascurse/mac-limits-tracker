@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-08-03 — Recovery-copy для ошибок провайдеров живёт в Core, а не в SwiftUI
+
+**Контекст:** ошибки провайдеров (network, CLI, auth) рендерились в UI сырым техническим текстом — пользователь не видел, какое действие восстановит провайдер.
+**Решение:** `ProviderErrorRecoveryMapper` (Core, `Models/ProviderErrorRecovery.swift`) — чистая политика: сырой `providerError`/`usageError` → `KnownProviderError` (typed exhaustive) → `RecoveryContent` (primary copy + действие + диагностика). `PopupContentBuilder` и виджет получают готовый `RecoveryContent` и рендерят только `primaryText`; сырые детали остаются в `help`/`accessibilityHint`. Для неизвестных ошибок — безопасный fallback с действием retry.
+**Почему:** копирование логики разбора в каждую тему и каждую поверхность дало бы рассинхрон; типизированный enum защищает от забытого нового вида ошибки. UI остаётся тонким: он не знает о префиксах и не интерпретирует raw-строки.
+**Последствия:** добавлен `PopupRow.recovery(ProviderRecoveryContent)`; старый `PopupRow.error(String)` оставлен для не-диагностических состояний (например, `rate limit reached`). Все темы (`System`/`Terminal`/`Phosphor`/`TUI`) и обе поверхности (`menuBar`/`desktop`, плюс виджет) обязаны маршрутизировать `.recovery` через mapper.
+
 ## 2026-08-03 — Единый presentation-контракт 7-дневного тренда (bd mac-limits-tracker-gld.1)
 
 **Контекст:** `PopupRow.sparkline` и `SparklineContent` несли `usedPercent`, а summary-строки рядом показывали `remainingPercent` — направление линии противоречило числу. Исторические точки могли быть редкими, но UI не отличал настоящий тренд от недостающих данных.

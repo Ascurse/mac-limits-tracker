@@ -166,7 +166,7 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
 
     func test_providerError_isSingleErrorRow() {
         let s = section(makeStatus(providerError: "boom"))
-        XCTAssertEqual(s.rows, [.error("boom")])
+        XCTAssertEqual(s.rows, [recovery("Claude Code error — retry", action: .retry, diagnostic: "boom")])
     }
 
     func test_planRow_showsRawSubscriptionType() {
@@ -227,7 +227,8 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
 
     func test_usageError_shownWhenNoUsage() {
         let s = section(makeStatus(usageError: "token expired"))
-        XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "max"), .error("token expired")])
+        XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "max"),
+                                recovery("Claude Code error — retry", action: .retry, diagnostic: "token expired")])
     }
 
     func test_noUsageNoError_loadingUsageNote() {
@@ -275,7 +276,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
 
     func test_providerError_isSingleErrorRow() {
         let s = section(makeStatus(providerError: "no auth.json"))
-        XCTAssertEqual(s.rows, [.error("no auth.json")])
+        XCTAssertEqual(s.rows, [recovery("Codex error — retry", action: .retry, diagnostic: "no auth.json")])
     }
 
     func test_snapshotPlanTypeWinsOverJwtClaim() {
@@ -346,7 +347,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
             makeStatus(usageError: "app-server unavailable", authMode: nil, email: nil,
                        accountOwner: nil, daysUntilRenewal: nil, subscriptionActiveUntil: nil))
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus"),
-                                .error("app-server unavailable")])
+                                recovery("Codex error — retry", action: .retry, diagnostic: "app-server unavailable")])
     }
 
     func test_nonStandardDurationWindow_rendersWithFallbackLabelInsteadOfDisappearing() {
@@ -431,7 +432,7 @@ final class PopupContentBuilderKimiTests: XCTestCase {
         XCTAssertEqual(s.title, "Kimi")
         XCTAssertEqual(s.rows, [
             .detail(key: "Plan", value: "kimi-pro"),
-            .error("Kimi login expired — open Kimi Code to refresh")
+            recovery("Kimi login expired — open Kimi Code to refresh", action: .openProviderCLI, diagnostic: "Kimi login expired — open Kimi Code to refresh")
         ])
     }
 
@@ -448,7 +449,7 @@ final class PopupContentBuilderKimiTests: XCTestCase {
                                 providerError: "kimi-code refresh token missing",
                                 fetchedAt: Self.sentinel)
         let s = section(status)
-        XCTAssertEqual(s.rows, [.error("kimi-code refresh token missing")])
+        XCTAssertEqual(s.rows, [recovery("Kimi not logged in — open Kimi Code to refresh", action: .openProviderCLI, diagnostic: "kimi-code refresh token missing")])
     }
 
     func test_nilStatus_isLoadingNote() {
@@ -768,7 +769,7 @@ final class PopupContentBuilderStaleTests: XCTestCase {
             return XCTFail("ожидалась .note 'updated ... ago', rows: \(s.rows)")
         }
         XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
-        XCTAssertEqual(s.rows[4], .error("network down"))
+        XCTAssertEqual(s.rows[4], recovery("Claude Code error — retry", action: .retry, diagnostic: "network down"))
     }
 
     func test_providerErrorWithoutLastGood_isSingleErrorRowAndNotStale() {
@@ -777,7 +778,7 @@ final class PopupContentBuilderStaleTests: XCTestCase {
         let s = PopupContentBuilder.section(state, now: Self.now)
 
         XCTAssertFalse(s.isStale)
-        XCTAssertEqual(s.rows, [.error("no auth.json")])
+        XCTAssertEqual(s.rows, [recovery("Claude Code error — retry", action: .retry, diagnostic: "no auth.json")])
     }
 
     func test_staleUsageError_mergesFreshPlanWithLastGoodWindows() {
@@ -801,7 +802,7 @@ final class PopupContentBuilderStaleTests: XCTestCase {
             return XCTFail("ожидалась .note 'updated ... ago', rows: \(s.rows)")
         }
         XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
-        XCTAssertEqual(s.rows[4], .error("usage endpoint 500"))
+        XCTAssertEqual(s.rows[4], recovery("Claude Code error — retry", action: .retry, diagnostic: "usage endpoint 500"))
     }
 
     func test_updatedText_staleUsesLastGoodFetchedAt() {
@@ -941,8 +942,12 @@ final class PopupContentBuilderSectionsTests: XCTestCase {
             return XCTFail("expected note 'updated ... ago', rows: \(sections[0].rows)")
         }
         XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
-        XCTAssertEqual(sections[0].rows[3], .error("network down"))
+        XCTAssertEqual(sections[0].rows[3], recovery("Claude Code error — retry", action: .retry, diagnostic: "network down"))
     }
+}
+
+private func recovery(_ primaryText: String, action: ProviderRecoveryAction, diagnostic: String) -> PopupRow {
+    .recovery(ProviderRecoveryContent(primaryText: primaryText, action: action, diagnostic: diagnostic))
 }
 
 /// Контракт 7-дневного тренда: единая метрика remainingPercent, сортировка,
