@@ -63,14 +63,15 @@ final class AsciiSparklineTests: XCTestCase {
 }
 
 final class AsciiSparklineTrendTests: XCTestCase {
-    private func trend(_ usedPercents: [Double]) -> SparklineContent {
+    private func trend(_ remainingPercents: [Double]) -> SparklineContent {
         let now = Date()
-        let points = usedPercents.enumerated().map { i, value in
-            SparklinePoint(time: now.addingTimeInterval(TimeInterval(i * 3600)), usedPercent: value)
+        let points = remainingPercents.enumerated().map { i, value in
+            SparklinePoint(time: now.addingTimeInterval(TimeInterval(i * 3600)), remainingPercent: value)
         }
-        return SparklineContent(windowMins: 300, shortLabel: "5h",
+        return SparklineContent(windowMins: 300, shortLabel: "5h", windowLabel: "5-hour",
                                 rangeStart: now.addingTimeInterval(-7 * 24 * 3600),
-                                rangeEnd: now, points: points)
+                                rangeEnd: now, currentPercent: remainingPercents.last ?? 0,
+                                points: points, dataState: .ok)
     }
 
     func test_renderTrend_emptyPoints_returnsEmptyString() {

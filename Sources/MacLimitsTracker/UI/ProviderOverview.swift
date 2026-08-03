@@ -99,8 +99,8 @@ struct SystemOverviewBody: View {
             VStack(alignment: .leading, spacing: 2) {
                 // PointMark обязателен: одиночный LineMark с одной точкой ничего не рисует.
                 Chart(spark.points, id: \.time) { point in
-                    LineMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
-                    PointMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
+                    LineMark(x: .value("Time", point.time), y: .value("Remaining", point.remainingPercent))
+                    PointMark(x: .value("Time", point.time), y: .value("Remaining", point.remainingPercent))
                 }
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
