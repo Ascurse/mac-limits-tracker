@@ -114,6 +114,10 @@ struct ProvidersSettingsSection: View {
             ))
             .toggleStyle(.checkbox)
             .controlSize(controlSize)
+            .accessibilityIdentifier("provider-toggle-\(entry.setting.id)")
+            .accessibilityLabel("\(entry.descriptor.displayName) provider")
+            .accessibilityValue(entry.setting.isEnabled ? "Enabled" : "Disabled")
+            .accessibilityHint("Toggle provider availability")
             Spacer()
             Button {
                 viewModel.moveProviderUp(id: entry.setting.id)

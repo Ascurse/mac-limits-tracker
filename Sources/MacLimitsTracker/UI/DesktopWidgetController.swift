@@ -28,7 +28,7 @@ final class DesktopWidgetController {
 
     func show() {
         if panel == nil { panel = makePanel() }
-        panel?.orderFrontRegardless()
+        panel?.orderFront(nil)
     }
 
     func hide() {
