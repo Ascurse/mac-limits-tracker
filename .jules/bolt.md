@@ -5,3 +5,7 @@
 ## 2026-08-01 - Optimize historical usage querying and aggregation
 **Learning:** Historical time-series data queried from `HistoryStore` is inherently ordered by its chronological insertion. Redundant `.sorted` calls were added across the codebase (in `HistoryStore.samples` and downstream consumers like `BurnRateCalculator`), creating unnecessary O(N log N) overhead. Additionally, chaining multiple `.filter` and `.map` operations on large arrays allocates many intermediate collections.
 **Action:** Trust the data source guarantees. Omit secondary sorts when the initial query already preserves the required order. When traversing collections that require multiple filters and transformations, use a single-pass loop (like a `for` loop) instead of chained higher-order functions to minimize memory pressure and overhead.
+
+## 2026-08-03 - Avoid chained array operations and redundant sorts in PopupContent
+**Learning:** In `PopupContent.trendContent`, processing sparkline points involved chaining `.map`, `.sort`, `.reduce` (for deduplication), and `.filter`. Since the input `samples` from `HistoryStore` are already chronologically sorted, the `.sort` is redundant. Chaining these operations allocated three intermediate arrays. Combining them into a single-pass `for` loop avoids all intermediate allocations and the redundant O(N log N) sort.
+**Action:** Replace chained higher-order array operations (`.map`, `.filter`, `.reduce`) with a single-pass `for` loop when multiple transformations are needed, and trust the data source's order guarantees.

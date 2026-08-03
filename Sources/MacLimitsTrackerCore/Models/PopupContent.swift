@@ -525,25 +525,29 @@ public enum PopupContentBuilder {
         let currentPercent = max(0, min(100, 100 - currentUsedPercent))
 
         // Единственное преобразование used → remaining в presentation boundary.
-        var points: [SparklinePoint] = samples.map {
-            SparklinePoint(time: $0.fetchedAt, remainingPercent: 100 - $0.usedPercent)
-        }
+        // Используем один проход (Single-pass for loop) для оптимизации:
+        // 1. samples уже отсортированы по времени из HistoryStore, поэтому сортировка не нужна.
+        // 2. Избегаем создания 3-х промежуточных массивов от .map, .reduce, .filter
+        var points: [SparklinePoint] = []
+        points.reserveCapacity(samples.count) // Предотвращаем реаллокации
 
-        // Контракт: хронологический порядок, независимо от порядка сэмплов на входе.
-        points.sort { $0.time < $1.time }
+        for sample in samples {
+            // Ограничиваем диапазоном тренда.
+            // Так как массив отсортирован по времени, мы можем пропускать до rangeStart,
+            // а после rangeEnd - прерывать цикл (early break).
+            if sample.fetchedAt < rangeStart { continue }
+            if sample.fetchedAt > rangeEnd { break }
 
-        // Одинаковые timestamp — оставляем последнее значение, чтобы не было
-        // наложенных точек на линии.
-        points = points.reduce(into: [SparklinePoint]()) { result, point in
-            if let last = result.last, last.time == point.time {
-                result[result.count - 1] = point
+            let point = SparklinePoint(time: sample.fetchedAt, remainingPercent: 100 - sample.usedPercent)
+
+            // Одинаковые timestamp — оставляем последнее значение, чтобы не было
+            // наложенных точек на линии.
+            if let last = points.last, last.time == point.time {
+                points[points.count - 1] = point
             } else {
-                result.append(point)
+                points.append(point)
             }
         }
-
-        // Ограничиваем диапазоном тренда.
-        points = points.filter { $0.time >= rangeStart && $0.time <= rangeEnd }
 
         let dataState: TrendDataState
         if points.isEmpty {
