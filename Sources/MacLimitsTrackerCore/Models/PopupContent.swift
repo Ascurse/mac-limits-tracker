@@ -114,6 +114,25 @@ public enum Severity: Equatable, Sendable {
     case warning
     case critical
 
+    /// Маркер перед значением в текстовых темах — второй нецветовой признак
+    /// состояния помимо текстуры полосы (`AsciiBar`).
+    public var asciiMarker: String {
+        switch self {
+        case .normal:   return ""
+        case .warning:  return "!"
+        case .critical: return "!!"
+        }
+    }
+
+    /// Название состояния для VoiceOver.
+    public var accessibilityLabel: String {
+        switch self {
+        case .normal:   return "normal"
+        case .warning:  return "warning"
+        case .critical: return "critical"
+        }
+    }
+
     public static func from(
         remainingPercent: Double,
         thresholds: SeverityThresholds = .standard

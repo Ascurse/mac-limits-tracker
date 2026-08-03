@@ -376,17 +376,17 @@ struct PhosphorOverviewBody: View {
                     Text(w.shortLabel)
                         .foregroundStyle(Palette.mid)
                         .frame(width: 20, alignment: .leading)
+                    // Цветом монохромная тема состояния не различает, поэтому у
+                    // каждого — текстура полосы плюс маркер перед значением;
+                    // критичное сверх того инвертировано.
                     if w.severity == .critical {
-                        // Критичный остаток — инверсия: тёмный текст на яркой плашке.
-                        Text(AsciiBar.render(remainingPercent: w.remainingPercent))
-                            .foregroundStyle(Palette.bg)
-                            .background(Palette.bright)
-                            .accessibilityHidden(true)
+                        bar(w).foregroundStyle(Palette.bg).background(Palette.bright)
                     } else {
-                        Text(AsciiBar.render(remainingPercent: w.remainingPercent))
-                            .accessibilityHidden(true)
+                        bar(w)
                     }
-                    Text(w.severity == .warning ? "! \(w.remainingText)" : w.remainingText)
+                    Text(w.severity.asciiMarker.isEmpty
+                         ? w.remainingText
+                         : "\(w.severity.asciiMarker) \(w.remainingText)")
                         .monospacedDigit()
                 }
                 if let reset = w.resetText {
@@ -396,7 +396,7 @@ struct PhosphorOverviewBody: View {
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(w.longLabel), \(w.remainingText) remaining, \(severityLabel(w.severity))")
+            .accessibilityLabel("\(w.longLabel), \(w.remainingText) remaining, \(w.severity.accessibilityLabel)")
         case .sparkline(let spark):
             (Text("7d ").foregroundStyle(Palette.dim)
              + Text(AsciiSparkline.render(spark)))
@@ -426,12 +426,9 @@ struct PhosphorOverviewBody: View {
         }
     }
 
-    private func severityLabel(_ severity: Severity) -> String {
-        switch severity {
-        case .normal: return "normal"
-        case .warning: return "warning"
-        case .critical: return "critical"
-        }
+    private func bar(_ w: WindowContent) -> some View {
+        Text(AsciiBar.render(remainingPercent: w.remainingPercent, severity: w.severity))
+            .accessibilityHidden(true)
     }
 }
 
