@@ -61,6 +61,46 @@ enum TuiPalette {
     static let critical = Color(hex: ThemePalette.Tui.critical)
 }
 
+/// Строка «ключ — значение» моноширинных тем. Пока пара помещается целиком,
+/// это одна строка со значением по правому краю; когда перестаёт — значение
+/// уходит на свою строку вместо того, чтобы сжиматься в многоточие.
+/// Обрезание остаётся последним средством, и тогда полное значение доступно
+/// в подсказке и озвучке.
+struct CompactKeyValueRow: View {
+    let key: String
+    let value: String
+    let keyColor: Color
+    var valueColor: Color?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                keyText
+                Spacer(minLength: 8)
+                valueText
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                keyText
+                valueText.lineLimit(1).truncationMode(.middle)
+            }
+        }
+        .help(value)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(key)
+        .accessibilityValue(value)
+    }
+
+    private var keyText: Text {
+        Text(key).foregroundStyle(keyColor)
+    }
+
+    private var valueText: some View {
+        let text = Text(value)
+        return (valueColor.map { text.foregroundStyle($0) } ?? text)
+            .monospacedDigit()
+    }
+}
+
 /// Системная тема: текущий нативный вид сводки.
 struct SystemOverviewBody: View {
     let sections: [ProviderSectionContent]
@@ -227,11 +267,8 @@ struct TerminalOverviewBody: View {
         case .detail(let key, let value):
             // Plan уже показан в заголовке секции.
             if key != "Plan" {
-                HStack {
-                    Text(key.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(value).lineLimit(1).truncationMode(.middle)
-                }
+                CompactKeyValueRow(key: key.lowercased(), value: value,
+                                   keyColor: Palette.dim)
             }
         case .window(let w):
             VStack(alignment: .leading, spacing: 2) {
@@ -239,7 +276,9 @@ struct TerminalOverviewBody: View {
                     Text(w.shortLabel).foregroundStyle(Palette.dim)
                         .frame(width: 20, alignment: .leading)
                     bar(w, accent: accent)
+                    // Процент не сжимаем: полоса растягивается, значение — нет.
                     Text(w.remainingText).monospacedDigit()
+                        .fixedSize()
                         .frame(minWidth: 36, alignment: .trailing)
                 }
                 if let reset = w.resetText {
@@ -262,12 +301,9 @@ struct TerminalOverviewBody: View {
                 .padding(.leading, 26)
         case .cost(let c):
             VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(c.label.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
-                        .foregroundStyle(costValueColor(c.state))
-                }
+                CompactKeyValueRow(key: c.label.lowercased(), value: c.valueText,
+                                   keyColor: Palette.dim,
+                                   valueColor: costValueColor(c.state))
                 Text(c.footnoteText).foregroundStyle(Palette.dim)
             }
         case .error(let message):
@@ -293,6 +329,7 @@ struct TerminalOverviewBody: View {
                     .frame(width: max(4, geo.size.width * w.remainingPercent / 100))
             }
         }
+        .frame(minWidth: 24, idealWidth: 80)
         .frame(height: 4)
         .animation(.easeOut(duration: 0.3), value: w.remainingPercent)
     }
@@ -497,11 +534,8 @@ struct TUIOverviewBody: View {
         switch row {
         case .detail(let key, let value):
             if key != "Plan" {
-                HStack {
-                    Text(key.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(value).lineLimit(1).truncationMode(.middle)
-                }
+                CompactKeyValueRow(key: key.lowercased(), value: value,
+                                   keyColor: Palette.dim)
             }
         case .window(let w):
             VStack(alignment: .leading, spacing: 1) {
@@ -510,7 +544,9 @@ struct TUIOverviewBody: View {
                         .foregroundStyle(Palette.dim)
                         .frame(width: 20, alignment: .leading)
                     gauge(w)
+                    // Процент не сжимаем: датчик и так фиксированной ширины.
                     Text(w.remainingText).monospacedDigit()
+                        .fixedSize()
                         .frame(minWidth: 36, alignment: .trailing)
                 }
                 if let reset = w.resetText {
@@ -528,12 +564,9 @@ struct TUIOverviewBody: View {
                 .padding(.leading, 24)
         case .cost(let c):
             VStack(alignment: .leading, spacing: 1) {
-                HStack {
-                    Text(c.label.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
-                        .foregroundStyle(costValueColor(c.state))
-                }
+                CompactKeyValueRow(key: c.label.lowercased(), value: c.valueText,
+                                   keyColor: Palette.dim,
+                                   valueColor: costValueColor(c.state))
                 Text(c.footnoteText).foregroundStyle(Palette.dim)
             }
         case .error(let message):

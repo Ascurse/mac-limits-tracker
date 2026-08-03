@@ -120,6 +120,10 @@ Swift Package с тремя таргетами:
   unavailable»); билдер и виджет различают «слота нет» и «слот пуст».
 - Темы (`UI/*StatusView.swift`) — тупые рендеры `PopupRow`; provider-специфичная
   логика запрещена в UI-слое, только в `Core/Providers` и мапперах.
+- Строки «ключ — значение» в Terminal/TUI идут через `CompactKeyValueRow`
+  (`UI/ProviderOverview.swift`): `ViewThatFits` роняет значение на свою строку
+  вместо сжатия в многоточие. Числовые значения окон помечены `.fixedSize()` —
+  сжимается полоса, не процент.
 - Цвета тем — hex-константы в `Core/Models/ThemePalette.swift`; `TerminalPalette`/
   `PhosphorPalette`/`TuiPalette` в `UI/ProviderOverview.swift` только оборачивают
   их в `Color`. Новый цвет заводится в Core, иначе его не увидит гейт контраста
