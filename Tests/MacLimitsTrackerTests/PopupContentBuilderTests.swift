@@ -580,7 +580,10 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
             sample(windowMins: 300, hoursAgo: -1, used: 90),
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
-        XCTAssertTrue(sparklines(s).isEmpty, "будущий сэмпл не должен попадать в тренд, а единственный оставшийся — < 2 точек")
+        // Единственная допустимая точка → sparse; UsageTrendView покажет её маркером и note.
+        let sparks = sparklines(s)
+        XCTAssertEqual(sparks.count, 1)
+        XCTAssertEqual(sparks.first?.dataState, .sparse(pointCount: 1, minimumNeeded: 2))
     }
 
     func test_section_samplesWithinRangeBoundary_included() {
@@ -596,7 +599,10 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
     func test_section_singleSample_noTrendRow() {
         let history = [sample(windowMins: 300, hoursAgo: 1, used: 40)]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
-        XCTAssertTrue(sparklines(s).isEmpty, "единственная точка не формирует тренд")
+        // Единственная точка → sparse; UsageTrendView покажет маркер с note, а не уверенный график.
+        let sparks = sparklines(s)
+        XCTAssertEqual(sparks.count, 1)
+        XCTAssertEqual(sparks.first?.dataState, .sparse(pointCount: 1, minimumNeeded: 2))
     }
 
     func test_section_moreThanMaxPoints_downsamplesKeepingLatestPerBucket() {
