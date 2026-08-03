@@ -14,30 +14,31 @@ struct DesktopWindowView: View {
     @State private var settingsExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            ProviderOverview(
-                sections: PopupContentBuilder.sections(
-                    viewModel.states,
-                    history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds,
-                    costResult: viewModel.costEstimate),
-                theme: viewModel.appTheme,
-                surface: .desktop)
-            Spacer(minLength: 0)
-            Divider()
-            DisclosureGroup("Settings", isExpanded: $settingsExpanded) {
-                VStack(alignment: .leading, spacing: 12) {
-                    DisplaySettingsSection(viewModel: viewModel, surface: .desktop)
-                    RefreshSettingsSection(viewModel: viewModel, surface: .desktop)
-                    ProvidersSettingsSection(viewModel: viewModel, surface: .desktop)
-                    SystemSettingsSection(viewModel: viewModel, launchAtLogin: launchAtLogin, surface: .desktop)
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                ProviderOverview(
+                    sections: PopupContentBuilder.sections(
+                        viewModel.states,
+                        history: viewModel.historySamples(providerId:),
+                        thresholds: viewModel.severityThresholds,
+                        costResult: viewModel.costEstimate),
+                    theme: viewModel.appTheme,
+                    surface: .desktop)
+                Divider()
+                DisclosureGroup("Settings", isExpanded: $settingsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        DisplaySettingsSection(viewModel: viewModel, surface: .desktop)
+                        RefreshSettingsSection(viewModel: viewModel, surface: .desktop)
+                        ProvidersSettingsSection(viewModel: viewModel, surface: .desktop)
+                        SystemSettingsSection(viewModel: viewModel, launchAtLogin: launchAtLogin, surface: .desktop)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
+                .accessibilityHint("Expand to edit shared settings")
             }
-            .accessibilityHint("Expand to edit shared settings")
+            .padding(20)
         }
-        .padding(20)
         .frame(minWidth: 420, idealWidth: 520, minHeight: 320, idealHeight: 480)
         .task { viewModel.start() }
     }
