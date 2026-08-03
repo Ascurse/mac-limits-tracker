@@ -30,32 +30,35 @@ struct ProviderOverview: View {
     }
 }
 
+// Значения палитр живут в Core (`ThemePalette`) — так контраст проверяется
+// тестом; здесь только обёртки hex → Color.
+
 enum TerminalPalette {
-    static let bg = Color(hex: 0x1A1B26)
-    static let fg = Color(hex: 0xC0CAF5)
-    static let dim = Color(hex: 0xA9B1D6)
-    static let track = Color(hex: 0x2F334D)
-    static let cyan = Color(hex: 0x7DCFFF)
-    static let warning = Color(hex: 0xE0AF68)
-    static let critical = Color(hex: 0xF7768E)
+    static let bg = Color(hex: ThemePalette.Terminal.bg)
+    static let fg = Color(hex: ThemePalette.Terminal.fg)
+    static let dim = Color(hex: ThemePalette.Terminal.dim)
+    static let track = Color(hex: ThemePalette.Terminal.track)
+    static let cyan = Color(hex: ThemePalette.Terminal.cyan)
+    static let warning = Color(hex: ThemePalette.Terminal.warning)
+    static let critical = Color(hex: ThemePalette.Terminal.critical)
 }
 
 enum PhosphorPalette {
-    static let bg = Color(hex: 0x050805)
-    static let bright = Color(hex: 0x35E06A)
-    static let mid = Color(hex: 0x1E9C48)
-    static let dim = Color(hex: 0x58C978)
-    static let heading = Color(hex: 0x8DFFB0)
+    static let bg = Color(hex: ThemePalette.Phosphor.bg)
+    static let bright = Color(hex: ThemePalette.Phosphor.bright)
+    static let mid = Color(hex: ThemePalette.Phosphor.mid)
+    static let dim = Color(hex: ThemePalette.Phosphor.dim)
+    static let heading = Color(hex: ThemePalette.Phosphor.heading)
 }
 
 enum TuiPalette {
-    static let bg = Color(hex: 0x101216)
-    static let fg = Color(hex: 0xD0D5DD)
-    static let border = Color(hex: 0x3A4150)
-    static let dim = Color(hex: 0xAAB4C5)
-    static let normal = Color(hex: 0x9ECE6A)
-    static let warning = Color(hex: 0xE0AF68)
-    static let critical = Color(hex: 0xF7768E)
+    static let bg = Color(hex: ThemePalette.Tui.bg)
+    static let fg = Color(hex: ThemePalette.Tui.fg)
+    static let border = Color(hex: ThemePalette.Tui.border)
+    static let dim = Color(hex: ThemePalette.Tui.dim)
+    static let normal = Color(hex: ThemePalette.Tui.normal)
+    static let warning = Color(hex: ThemePalette.Tui.warning)
+    static let critical = Color(hex: ThemePalette.Tui.critical)
 }
 
 /// Системная тема: текущий нативный вид сводки.
@@ -84,7 +87,7 @@ struct SystemOverviewBody: View {
                 rowView(row, accent: accent)
             }
         }
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -215,7 +218,7 @@ struct TerminalOverviewBody: View {
                 rowView(row, accent: accent)
             }
         }
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -353,7 +356,7 @@ struct PhosphorOverviewBody: View {
                 rowView(row)
             }
         }
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -489,7 +492,7 @@ struct TUIOverviewBody: View {
             .offset(x: 8, y: -8)
         }
         .padding(.top, 8)
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
