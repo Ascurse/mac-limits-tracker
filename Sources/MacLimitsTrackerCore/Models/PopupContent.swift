@@ -456,15 +456,14 @@ public enum PopupContentBuilder {
                 rangeEnd: rangeEnd
             )
 
+            // UsageTrendView обрабатывает все состояния контракта сам:
+            // ok → полный график, sparse/stale → только маркеры с note,
+            // gap → разорванная линия с note, empty → пропускаем (не шумим).
             switch trend.dataState {
-            case .ok:
-                rows.append(.sparkline(trend))
             case .empty:
-                // Пустая история — не рендерим строку, чтобы не шуметь "no history"
-                // на каждом окне. Контракт всё равно определяет .empty и fallbackText.
                 break
             default:
-                rows.append(.note(trend.fallbackText))
+                rows.append(.sparkline(trend))
             }
 
             return rows
