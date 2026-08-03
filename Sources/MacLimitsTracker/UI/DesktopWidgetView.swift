@@ -86,10 +86,15 @@ struct DesktopWidgetView: View {
         }
     }
 
+    private func recoveryContent(for state: ProviderState) -> ProviderRecoveryContent? {
+        guard let raw = state.snapshot?.providerError ?? state.snapshot?.usageError else { return nil }
+        return ProviderErrorRecoveryMapper.recover(rawError: raw, providerName: state.descriptor.displayName)
+    }
+
     private func providerSection(_ state: ProviderState) -> some View {
         let color = Color(hex: state.descriptor.accentColorHex)
         let resolved = SnapshotResolver.resolve(state)
-        let error = state.snapshot?.providerError ?? state.snapshot?.usageError
+        let recovery = recoveryContent(for: state)
         let items = windows(for: resolved.snapshot, thresholds: viewModel.severityThresholds)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -105,18 +110,20 @@ struct DesktopWidgetView: View {
                     windowRow(window, color: color)
                 }
                 .opacity(0.55)
-                if let staleError = resolved.error {
-                    Label(staleError, systemImage: "exclamationmark.triangle")
+                if let recovery {
+                    Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
                         .font(.caption2)
                         .foregroundStyle(.red)
                         .lineLimit(2)
+                        .help(recovery.diagnostic)
                         .opacity(0.55)
                 }
-            } else if let error {
-                Label(error, systemImage: "exclamationmark.triangle")
+            } else if let recovery {
+                Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
                     .font(.caption2)
                     .foregroundStyle(.red)
                     .lineLimit(2)
+                    .help(recovery.diagnostic)
             } else if state.snapshot == nil {
                 Text("Loading…")
                     .font(.caption2)

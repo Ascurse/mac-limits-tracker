@@ -130,6 +130,13 @@ struct SystemOverviewBody: View {
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.red)
+        case .recovery(let content):
+            Label(content.primaryText, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .help(content.diagnostic)
+                .accessibilityLabel(content.primaryText)
+                .accessibilityHint("Diagnostic: \(content.diagnostic)")
         case .note(let text):
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
@@ -269,6 +276,12 @@ struct TerminalOverviewBody: View {
             }
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
+        case .recovery(let content):
+            Text("✗ \(content.primaryText)")
+                .foregroundStyle(Palette.critical)
+                .help(content.diagnostic)
+                .accessibilityLabel(content.primaryText)
+                .accessibilityHint("Diagnostic: \(content.diagnostic)")
         case .note(let text):
             Text(text).foregroundStyle(Palette.dim)
         }
@@ -415,6 +428,12 @@ struct PhosphorOverviewBody: View {
             }
         case .error(let message):
             Text("! \(message)").foregroundStyle(Palette.heading)
+        case .recovery(let content):
+            Text("! \(content.primaryText)")
+                .foregroundStyle(Palette.heading)
+                .help(content.diagnostic)
+                .accessibilityLabel(content.primaryText)
+                .accessibilityHint("Diagnostic: \(content.diagnostic)")
         case .note(let text):
             Text(text).foregroundStyle(Palette.mid)
         }
@@ -527,6 +546,12 @@ struct TUIOverviewBody: View {
             }
         case .error(let message):
             Text("✗ \(message)").foregroundStyle(Palette.critical)
+        case .recovery(let content):
+            Text("✗ \(content.primaryText)")
+                .foregroundStyle(Palette.critical)
+                .help(content.diagnostic)
+                .accessibilityLabel(content.primaryText)
+                .accessibilityHint("Diagnostic: \(content.diagnostic)")
         case .note(let text):
             Text(text).foregroundStyle(Palette.dim)
         }

@@ -19,7 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
-## 2026-07-31 — Ad-hoc zip как временный релиз вместо запрета публикации (bd mac-limits-tracker-l3n, l3n.1) [пересматривает: 2026-07-29 «Распространение без Developer ID»]
+## 2026-08-03 — Recovery-copy для ошибок провайдеров живёт в Core, а не в SwiftUI
+
+**Контекст:** ошибки провайдеров (network, CLI, auth) рендерились в UI сырым техническим текстом — пользователь не видел, какое действие восстановит провайдер.
+**Решение:** `ProviderErrorRecoveryMapper` (Core, `Models/ProviderErrorRecovery.swift`) — чистая политика: сырой `providerError`/`usageError` → `KnownProviderError` (typed exhaustive) → `RecoveryContent` (primary copy + действие + диагностика). `PopupContentBuilder` и виджет получают готовый `RecoveryContent` и рендерят только `primaryText`; сырые детали остаются в `help`/`accessibilityHint`. Для неизвестных ошибок — безопасный fallback с действием retry.
+**Почему:** копирование логики разбора в каждую тему и каждую поверхность дало бы рассинхрон; типизированный enum защищает от забытого нового вида ошибки. UI остаётся тонким: он не знает о префиксах и не интерпретирует raw-строки.
+**Последствия:** добавлен `PopupRow.recovery(ProviderRecoveryContent)`; старый `PopupRow.error(String)` оставлен для не-диагностических состояний (например, `rate limit reached`). Все темы (`System`/`Terminal`/`Phosphor`/`TUI`) и обе поверхности (`menuBar`/`desktop`, плюс виджет) обязаны маршрутизировать `.recovery` через mapper.
+
 
 **Контекст:** запись от 2026-07-29 и README расходились: журнал уже допускал `.zip` в GitHub Releases «с честным предупреждением про Gatekeeper», а README прямо запрещал публиковать `v*`-тег или ad-hoc zip как релиз. К моменту этой записи fallback в `.github/workflows/release.yml` (bd mac-limits-tracker-l3n.1) уже реализован и README нужно было привести в соответствие.
 **Решение:** пайплайн публикует GitHub Release по каждому `v*`-тегу: если все три секрета Developer ID (`MACOS_CERT_P12_BASE64`/`MACOS_CERT_PASSWORD`/`DEVELOPER_ID_APPLICATION`) отсутствуют — собирает `dist/MacLimitsTracker.zip` из ad-hoc-подписанного бандла (подпись линкера, `make-app.sh`) и публикует его с заметкой о предупреждении Gatekeeper и инструкцией обхода (`xattr -cr` или правый клик → «Открыть»). Частичный набор секретов остаётся fail-closed как ошибка конфигурации. При полном наборе секретов путь signed+notarized применяется как и раньше, без изменений в приоритете.
