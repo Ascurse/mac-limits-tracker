@@ -1014,9 +1014,9 @@ final class SparklineTrendContractTests: XCTestCase {
 
     func test_sort_pointsAreChronological() {
         let trend = trendContent(samples: [
-            sample(hoursAgo: 1, used: 10),
             sample(hoursAgo: 5, used: 30),
             sample(hoursAgo: 2, used: 20),
+            sample(hoursAgo: 1, used: 10),
         ])
         XCTAssertEqual(trend.points.map(\.remainingPercent), [70, 80, 90])
         XCTAssertTrue(trend.points.map(\.time) == trend.points.map(\.time).sorted())
@@ -1035,8 +1035,8 @@ final class SparklineTrendContractTests: XCTestCase {
 
     func test_gap_largeGapBetweenPoints_returnsGapState() {
         let trend = trendContent(samples: [
-            sample(hoursAgo: 1, used: 20),
             sample(hoursAgo: 48, used: 30),
+            sample(hoursAgo: 1, used: 20),
         ])
         guard case .gap(let gap, let threshold) = trend.dataState else {
             return XCTFail("ожидался .gap, получен \(trend.dataState)")
