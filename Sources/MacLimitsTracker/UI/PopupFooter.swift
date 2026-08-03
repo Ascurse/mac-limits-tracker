@@ -22,6 +22,7 @@ struct PopupFooter: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.mini)
+                .help("Quit (⌘Q)")
                 .keyboardShortcut("q", modifiers: .command)
             }
         }
