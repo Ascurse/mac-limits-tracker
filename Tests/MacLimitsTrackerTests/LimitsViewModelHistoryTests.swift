@@ -30,6 +30,21 @@ final class LimitsViewModelHistoryTests: XCTestCase {
         }
     }
 
+    private actor MutableHistoryProvider: LimitsProvider {
+        let descriptor: ProviderDescriptor
+        var snapshot: LimitsSnapshot
+
+        init(id: String, snapshot: LimitsSnapshot) {
+            descriptor = ProviderDescriptor(id: id, displayName: id, shortName: id,
+                                          menuBarSymbol: String(id.prefix(1)).uppercased(),
+                                          accentColorHex: 0, loginHelp: nil)
+            self.snapshot = snapshot
+        }
+
+        func fetch() async -> LimitsSnapshot { snapshot }
+        func setSnapshot(_ snapshot: LimitsSnapshot) { self.snapshot = snapshot }
+    }
+
     private func snapshot(
         windows: [SnapshotWindow],
         usageError: String? = nil,
@@ -122,6 +137,60 @@ final class LimitsViewModelHistoryTests: XCTestCase {
 
         let samples = vm.historySamples(providerId: "claude")
         XCTAssertEqual(samples.count, 2)
+    }
+
+    func test_start_afterNetworkFailure_recordsRecoveryHistory() async {
+        let errorSnapshot = snapshot(windows: [], providerError: "network down")
+        let successSnapshot = snapshot(
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil)]
+        )
+        let provider = MutableHistoryProvider(id: "claude", snapshot: errorSnapshot)
+        let vmFailure = LimitsViewModel(providers: [provider], historyStore: historyStore)
+
+        vmFailure.refresh()
+        await waitUntil { !vmFailure.isRefreshing }
+        XCTAssertTrue(vmFailure.historySamples(providerId: "claude").isEmpty)
+
+        await provider.setSnapshot(successSnapshot)
+        let vmRelaunch = LimitsViewModel(providers: [provider], historyStore: historyStore)
+        vmRelaunch.start()
+        await waitUntil { !vmRelaunch.isRefreshing }
+
+        let samples = vmRelaunch.historySamples(providerId: "claude")
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples.first?.usedPercent, 50)
+    }
+
+    /// PIN: без явного `start()` новый ViewModel не должен обновляться и писать историю.
+    /// Реальный баг: единственный триггер `start()` был на `.task` MenuBarExtra-лейбла,
+    /// который не гарантирует выполнение без открытия поверхности (bd mac-limits-tracker-4jx).
+    func test_relaunchWithoutStart_doesNotAutoRecordHistory() async {
+        let errorSnapshot = snapshot(windows: [], providerError: "network down")
+        let successSnapshot = snapshot(
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: 50, resetsAt: nil)]
+        )
+        let provider = MutableHistoryProvider(id: "claude", snapshot: errorSnapshot)
+        let vmFailure = LimitsViewModel(providers: [provider], historyStore: historyStore)
+
+        vmFailure.refresh()
+        await waitUntil { !vmFailure.isRefreshing }
+        XCTAssertTrue(vmFailure.historySamples(providerId: "claude").isEmpty)
+
+        await provider.setSnapshot(successSnapshot)
+        let vmRelaunch = LimitsViewModel(providers: [provider], historyStore: historyStore)
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(
+            vmRelaunch.historySamples(providerId: "claude").isEmpty,
+            "новый ViewModel не должен обновляться без вызова start()"
+        )
+
+        vmRelaunch.start()
+        await waitUntil { !vmRelaunch.isRefreshing }
+
+        let samples = vmRelaunch.historySamples(providerId: "claude")
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples.first?.usedPercent, 50)
     }
 
     func test_historySamples_returnsRecordedForProvider() async {
