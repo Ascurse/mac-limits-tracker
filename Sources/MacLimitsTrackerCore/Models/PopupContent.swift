@@ -56,32 +56,91 @@ public struct CostRowContent: Equatable, Sendable {
     }
 }
 
-/// Одна точка спарклайна: отдельный struct, т.к. кортеж не синтезирует Equatable.
+/// Метрика тренда: единый контракт на уровне presentation, чтобы рендереры
+/// всех тем не преобразовывали used↔remaining по-разному.
+public enum TrendMetric: Equatable, Sendable {
+    /// Остаток окна в процентах (0–100), как у строки summary рядом.
+    case remainingPercent
+}
+
+/// Состояние данных тренда: рендерер должен отличать реальный тренд от
+/// недостаточных/пропущенных данных.
+public enum TrendDataState: Equatable, Sendable {
+    case ok
+    /// Недостаточно точек для уверенной линии.
+    case sparse(pointCount: Int, minimumNeeded: Int)
+    /// Слишком большой разрыв между соседними точками — нельзя рисовать сплошную линию.
+    case gap(largestGapSeconds: TimeInterval, thresholdSeconds: TimeInterval)
+    case empty
+    case loading
+    /// Последняя точка слишком старая.
+    case stale(lastSampleSecondsAgo: TimeInterval)
+}
+
+/// Одна точка тренда: отдельный struct, т.к. кортеж не синтезирует Equatable.
 public struct SparklinePoint: Equatable, Sendable {
     public let time: Date
-    public let usedPercent: Double
+    public let remainingPercent: Double
 
-    public init(time: Date, usedPercent: Double) {
+    public init(time: Date, remainingPercent: Double) {
         self.time = time
-        self.usedPercent = usedPercent
+        self.remainingPercent = max(0, min(100, remainingPercent))
     }
 }
 
-/// Тренд использования за трейлинг 7 дней для одного окна лимита. rangeStart/rangeEnd —
-/// границы периода, чтобы рендереры показывали подписи диапазона независимо от хранилища.
+/// Единый presentation-контракт 7-дневного тренда для одного окна лимита.
+/// metric — остаток (0–100), rangeStart/rangeEnd — границы окна, points отсортированы
+/// хронологически и клемпированы, dataState явно говорит, можно ли рисовать линию.
 public struct SparklineContent: Equatable, Sendable {
+    public let metric: TrendMetric
     public let windowMins: Int
     public let shortLabel: String
+    public let windowLabel: String
     public let rangeStart: Date
     public let rangeEnd: Date
+    public let currentPercent: Double
     public let points: [SparklinePoint]
+    public let dataState: TrendDataState
 
-    public init(windowMins: Int, shortLabel: String, rangeStart: Date, rangeEnd: Date, points: [SparklinePoint]) {
+    public var fallbackText: String {
+        switch dataState {
+        case .ok:
+            return ""
+        case .sparse(let pointCount, let minimumNeeded):
+            return "7d — \(pointCount) sample\(pointCount == 1 ? "" : "s"), need \(minimumNeeded)"
+        case .gap(let largestGapSeconds, let thresholdSeconds):
+            let hours = Int(largestGapSeconds / 3600)
+            return "7d — data gap (\(hours)h > \(Int(thresholdSeconds / 3600))h)"
+        case .empty:
+            return "7d — no history"
+        case .loading:
+            return "7d — loading"
+        case .stale(let lastSampleSecondsAgo):
+            let hours = Int(lastSampleSecondsAgo / 3600)
+            return "7d — stale (last sample \(hours)h ago)"
+        }
+    }
+
+    public init(
+        metric: TrendMetric = .remainingPercent,
+        windowMins: Int,
+        shortLabel: String,
+        windowLabel: String,
+        rangeStart: Date,
+        rangeEnd: Date,
+        currentPercent: Double,
+        points: [SparklinePoint],
+        dataState: TrendDataState
+    ) {
+        self.metric = metric
         self.windowMins = windowMins
         self.shortLabel = shortLabel
+        self.windowLabel = windowLabel
         self.rangeStart = rangeStart
         self.rangeEnd = rangeEnd
+        self.currentPercent = max(0, min(100, currentPercent))
         self.points = points
+        self.dataState = dataState
     }
 }
 
@@ -359,12 +418,6 @@ public enum PopupContentBuilder {
         let rangeStart = now.addingTimeInterval(-Self.trendRangeDays * 24 * 3600)
         let rangeEnd = now
 
-        var groupedHistory: [Int: [SparklinePoint]] = [:]
-        for sample in history where sample.fetchedAt >= rangeStart && sample.fetchedAt <= rangeEnd {
-            let point = SparklinePoint(time: sample.fetchedAt, usedPercent: sample.usedPercent)
-            groupedHistory[sample.windowMins, default: []].append(point)
-        }
-
         return windows.flatMap { w -> [PopupRow] in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
             let row = windowRow(short: labels.short, long: labels.long,
@@ -390,13 +443,30 @@ public enum PopupContentBuilder {
                 )))
             }
 
-            let rawPoints = groupedHistory[durationMins] ?? []
-            let points = trendPoints(from: rawPoints, rangeStart: rangeStart, rangeEnd: rangeEnd)
+            let samples = history.filter {
+                $0.windowMins == durationMins && $0.fetchedAt >= rangeStart && $0.fetchedAt <= rangeEnd
+            }
+            let trend = trendContent(
+                samples: samples,
+                windowMins: durationMins,
+                shortLabel: labels.short,
+                windowLabel: labels.long,
+                currentUsedPercent: usedPercent,
+                rangeStart: rangeStart,
+                rangeEnd: rangeEnd
+            )
 
-            guard points.count >= 2 else { return rows }
-            let sparkline = SparklineContent(windowMins: durationMins, shortLabel: labels.short,
-                                             rangeStart: rangeStart, rangeEnd: rangeEnd, points: points)
-            rows.append(.sparkline(sparkline))
+            switch trend.dataState {
+            case .ok:
+                rows.append(.sparkline(trend))
+            case .empty:
+                // Пустая история — не рендерим строку, чтобы не шуметь "no history"
+                // на каждом окне. Контракт всё равно определяет .empty и fallbackText.
+                break
+            default:
+                rows.append(.note(trend.fallbackText))
+            }
+
             return rows
         }
     }
@@ -424,6 +494,91 @@ public enum PopupContentBuilder {
             latestByBucket[bucketIndex] = point
         }
         return (0..<maxPoints).compactMap { latestByBucket[$0] }
+    }
+
+    /// Минимальное число точек для уверенной линии тренда.
+    private static let trendMinPoints = 2
+    /// Максимальный разрыв между соседними точками, при котором ещё можно рисовать
+    /// сплошную линию. Больше — явный dataState `.gap`.
+    private static let trendGapThreshold: TimeInterval = 24 * 3600
+
+    /// Строит единый presentation-контракт 7-дневного тренда из сырых `UsageSample`.
+    /// Здесь единственное преобразование usedPercent → remainingPercent (100 - used).
+    /// Возвращает SparklineContent с отсортированными, клемпированными точками,
+    /// явным dataState и fallbackText для рендереров.
+    internal static func trendContent(
+        samples: [UsageSample],
+        windowMins: Int,
+        shortLabel: String,
+        windowLabel: String,
+        currentUsedPercent: Double,
+        rangeStart: Date,
+        rangeEnd: Date,
+        minPoints: Int = trendMinPoints,
+        gapThreshold: TimeInterval = trendGapThreshold,
+        maxPoints: Int = 24
+    ) -> SparklineContent {
+        let currentPercent = max(0, min(100, 100 - currentUsedPercent))
+
+        // Единственное преобразование used → remaining в presentation boundary.
+        var points: [SparklinePoint] = samples.map {
+            SparklinePoint(time: $0.fetchedAt, remainingPercent: 100 - $0.usedPercent)
+        }
+
+        // Контракт: хронологический порядок, независимо от порядка сэмплов на входе.
+        points.sort { $0.time < $1.time }
+
+        // Одинаковые timestamp — оставляем последнее значение, чтобы не было
+        // наложенных точек на линии.
+        points = points.reduce(into: [SparklinePoint]()) { result, point in
+            if let last = result.last, last.time == point.time {
+                result[result.count - 1] = point
+            } else {
+                result.append(point)
+            }
+        }
+
+        // Ограничиваем диапазоном тренда.
+        points = points.filter { $0.time >= rangeStart && $0.time <= rangeEnd }
+
+        let dataState: TrendDataState
+        if points.isEmpty {
+            dataState = .empty
+        } else if points.count < minPoints {
+            dataState = .sparse(pointCount: points.count, minimumNeeded: minPoints)
+        } else {
+            var largestGap: TimeInterval = 0
+            for i in 1..<points.count {
+                let gap = points[i].time.timeIntervalSince(points[i - 1].time)
+                largestGap = max(largestGap, gap)
+            }
+            if largestGap > gapThreshold {
+                dataState = .gap(largestGapSeconds: largestGap, thresholdSeconds: gapThreshold)
+            } else {
+                dataState = .ok
+            }
+        }
+
+        // Даунсэмплинг только для уверенного тренда, чтобы не портить визуальную
+        // плотность при большом числе точек.
+        let renderPoints: [SparklinePoint]
+        if case .ok = dataState {
+            renderPoints = trendPoints(from: points, rangeStart: rangeStart, rangeEnd: rangeEnd, maxPoints: maxPoints)
+        } else {
+            renderPoints = points
+        }
+
+        return SparklineContent(
+            metric: .remainingPercent,
+            windowMins: windowMins,
+            shortLabel: shortLabel,
+            windowLabel: windowLabel,
+            rangeStart: rangeStart,
+            rangeEnd: rangeEnd,
+            currentPercent: currentPercent,
+            points: renderPoints,
+            dataState: dataState
+        )
     }
 
     private static func renewalRows(_ snap: LimitsSnapshot, now: Date) -> [PopupRow] {

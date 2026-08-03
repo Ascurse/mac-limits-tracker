@@ -19,6 +19,13 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
+## 2026-08-03 — Единый presentation-контракт 7-дневного тренда (bd mac-limits-tracker-gld.1)
+
+**Контекст:** `PopupRow.sparkline` и `SparklineContent` несли `usedPercent`, а summary-строки рядом показывали `remainingPercent` — направление линии противоречило числу. Исторические точки могли быть редкими, но UI не отличал настоящий тренд от недостающих данных.
+**Решение:** `SparklineContent` стал единым presentation-контрактом: метрика `TrendMetric.remainingPercent`, диапазон 0–100, хронологические точки `SparklinePoint.remainingPercent`, `rangeStart/rangeEnd`, `currentPercent`, `windowLabel` и явный `TrendDataState` (ok / sparse / gap / empty / loading / stale). Единственное преобразование `usedPercent → remainingPercent` (100 − used) — в `PopupContentBuilder.trendContent`. Рендереры тем работают с готовым `remainingPercent`, повторно не конвертируя. Пустая история не рендерит строку (чтобы не шуметь), но контракт определяет `.empty` и `fallbackText`.
+**Почему:** один контракт устраняет рассинхрон направления линии и числа; `TrendDataState` позволяет явно отличить реальный тренд от разрывов/нехватки данных; `UsageSample` и снапшоты провайдеров не меняются, сохраняя обратную совместимость истории.
+**Последствия:** `SparklinePoint` теперь хранит `remainingPercent`; `AsciiSparkline` и System Charts рисуют остаток; новые тесты `SparklineTrendContractTests` проверяют конверсию, клемп, сортировку, дедуп timestamp, разрывы и empty/sparse. Схема persisted `history.json` не изменилась.
+
 ## 2026-07-31 — Ad-hoc zip как временный релиз вместо запрета публикации (bd mac-limits-tracker-l3n, l3n.1) [пересматривает: 2026-07-29 «Распространение без Developer ID»]
 
 **Контекст:** запись от 2026-07-29 и README расходились: журнал уже допускал `.zip` в GitHub Releases «с честным предупреждением про Gatekeeper», а README прямо запрещал публиковать `v*`-тег или ad-hoc zip как релиз. К моменту этой записи fallback в `.github/workflows/release.yml` (bd mac-limits-tracker-l3n.1) уже реализован и README нужно было привести в соответствие.
