@@ -8,37 +8,49 @@ import MacLimitsTrackerCore
 /// В desktop-сценарии вызываем `viewModel.start()` (идемпотентно по 3ip.1)
 /// на появление, чтобы при первом открытии окна данные подтянулись, даже
 /// если menu bar popup ещё не показывался.
+///
+/// Геометрия (bd mac-limits-tracker-gld.3): контент живёт в одной читабельной
+/// колонке `DesktopDashboardLayout` (header, сводка провайдеров, Settings —
+/// общие leading/trailing), центрированной в вертикальном ScrollView. На
+/// широком окне по бокам остаются спокойные поля, а не растянутые графики;
+/// ограничение только maxWidth, поэтому ресайз и узкие окна не ломаются.
 struct DesktopWindowView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let launchAtLogin: LaunchAtLoginManager
     @State private var settingsExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            ProviderOverview(
-                sections: PopupContentBuilder.sections(
-                    viewModel.states,
-                    history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds,
-                    costResult: viewModel.costEstimate),
-                theme: viewModel.appTheme,
-                surface: .desktop)
-            Spacer(minLength: 0)
-            Divider()
-            DisclosureGroup("Settings", isExpanded: $settingsExpanded) {
-                VStack(alignment: .leading, spacing: 12) {
-                    DisplaySettingsSection(viewModel: viewModel, surface: .desktop)
-                    RefreshSettingsSection(viewModel: viewModel, surface: .desktop)
-                    ProvidersSettingsSection(viewModel: viewModel, surface: .desktop)
-                    SystemSettingsSection(viewModel: viewModel, launchAtLogin: launchAtLogin, surface: .desktop)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                ProviderOverview(
+                    sections: PopupContentBuilder.sections(
+                        viewModel.states,
+                        history: viewModel.historySamples(providerId:),
+                        thresholds: viewModel.severityThresholds,
+                        costResult: viewModel.costEstimate),
+                    theme: viewModel.appTheme,
+                    surface: .desktop)
+                Divider()
+                DisclosureGroup("Settings", isExpanded: $settingsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        DisplaySettingsSection(viewModel: viewModel, surface: .desktop)
+                        RefreshSettingsSection(viewModel: viewModel, surface: .desktop)
+                        ProvidersSettingsSection(viewModel: viewModel, surface: .desktop)
+                        SystemSettingsSection(viewModel: viewModel, launchAtLogin: launchAtLogin, surface: .desktop)
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
+                .accessibilityHint("Expand to edit shared settings")
             }
-            .accessibilityHint("Expand to edit shared settings")
+            .padding(DesktopDashboardLayout.horizontalPadding)
+            .frame(minWidth: DesktopDashboardLayout.minContentWidth,
+                   maxWidth: DesktopDashboardLayout.maxContentWidth,
+                   alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .padding(20)
-        .frame(minWidth: 420, idealWidth: 520, minHeight: 320, idealHeight: 480)
+        .frame(minWidth: DesktopDashboardLayout.minWindowWidth, idealWidth: 520,
+               minHeight: 320, idealHeight: 480)
         .task { viewModel.start() }
     }
 
