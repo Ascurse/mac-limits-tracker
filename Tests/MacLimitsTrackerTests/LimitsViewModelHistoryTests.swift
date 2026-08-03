@@ -179,7 +179,7 @@ final class LimitsViewModelHistoryTests: XCTestCase {
         await provider.setSnapshot(successSnapshot)
         let vmRelaunch = LimitsViewModel(providers: [provider], historyStore: historyStore)
 
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(vmRelaunch.isRefreshing)
         XCTAssertTrue(
             vmRelaunch.historySamples(providerId: "claude").isEmpty,
             "новый ViewModel не должен обновляться без вызова start()"
