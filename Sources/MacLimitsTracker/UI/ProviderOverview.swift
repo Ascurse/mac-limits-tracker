@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import MacLimitsTrackerCore
 
 /// Поверхность, на которой рендерится сводка провайдеров: попап меню-бара
@@ -66,7 +65,6 @@ struct SystemOverviewBody: View {
     // Плотность: на desktop чуть просторнее. Меняет только геометрию,
     // правила контента не трогает.
     private var spacing: CGFloat { surface == .desktop ? 10 : 8 }
-    private var sparklineHeight: CGFloat { surface == .desktop ? 44 : 28 }
 
     var body: some View {
         ForEach(sections, id: \.descriptor.id) { s in
@@ -96,27 +94,10 @@ struct SystemOverviewBody: View {
             detailRow("\(w.longLabel) remaining", w.remainingText)
             detailRow("\(w.longLabel) resets", w.resetText ?? "—")
         case .sparkline(let spark):
-            VStack(alignment: .leading, spacing: 2) {
-                // PointMark обязателен: одиночный LineMark с одной точкой ничего не рисует.
-                Chart(spark.points, id: \.time) { point in
-                    LineMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
-                    PointMark(x: .value("Time", point.time), y: .value("Used", point.usedPercent))
-                }
-                .chartXAxis(.hidden)
-                .chartYAxis(.hidden)
-                .foregroundStyle(accent)
-                .frame(height: sparklineHeight)
-                // Подпись диапазона: "7d" слева, дни начала/конца справа.
-                HStack {
-                    Text("7d")
-                    Spacer()
-                    Text(spark.rangeStart, format: .dateTime.month(.abbreviated).day())
-                    Text("–")
-                    Text(spark.rangeEnd, format: .dateTime.month(.abbreviated).day())
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
+            UsageTrendView(content: spark,
+                           tokens: systemTrendTokens(accent: accent),
+                           variant: surface.trendVariant,
+                           showHeader: false)
         case .burnRate(let burn):
             Text(burn.text)
                 .font(.caption)
@@ -173,6 +154,19 @@ struct SystemOverviewBody: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
+    }
+
+    private func systemTrendTokens(accent: Color) -> UsageTrendTokens {
+        UsageTrendTokens(accent: accent,
+                         guide: .secondary.opacity(0.25),
+                         text: .primary,
+                         dim: .secondary,
+                         lineWidth: 2,
+                         pointSize: surface == .desktop ? 8 : 5,
+                         pointShape: .circle,
+                         background: nil,
+                         border: nil,
+                         font: .caption)
     }
 }
 
@@ -253,12 +247,11 @@ struct TerminalOverviewBody: View {
                 }
             }
         case .sparkline(let spark):
-            (Text("7d ").foregroundStyle(Palette.dim)
-             + Text(AsciiSparkline.render(spark)))
-                .foregroundStyle(accent)
+            UsageTrendView(content: spark,
+                           tokens: terminalTrendTokens(accent: accent),
+                           variant: surface.trendVariant,
+                           showHeader: false)
                 .padding(.leading, 26)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("7-day usage trend")
         case .burnRate(let burn):
             Text(burn.text)
                 .font(.caption)
@@ -321,6 +314,19 @@ struct TerminalOverviewBody: View {
         case .moderate: return Palette.warning
         case .slow:     return Palette.dim
         }
+    }
+
+    private func terminalTrendTokens(accent: Color) -> UsageTrendTokens {
+        UsageTrendTokens(accent: accent,
+                         guide: Palette.track,
+                         text: Palette.fg,
+                         dim: Palette.dim,
+                         lineWidth: 1,
+                         pointSize: surface == .desktop ? 4 : 3,
+                         pointShape: .square,
+                         background: nil,
+                         border: nil,
+                         font: desktopFont ?? .caption)
     }
 }
 
@@ -405,12 +411,11 @@ struct PhosphorOverviewBody: View {
                 }
             }
         case .sparkline(let spark):
-            (Text("7d ").foregroundStyle(Palette.dim)
-             + Text(AsciiSparkline.render(spark)))
-                .foregroundStyle(Palette.mid)
+            UsageTrendView(content: spark,
+                           tokens: phosphorTrendTokens,
+                           variant: surface.trendVariant,
+                           showHeader: false)
                 .padding(.leading, 26)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("7-day usage trend")
         case .burnRate(let burn):
             Text(burn.text)
                 .font(.caption)
@@ -437,6 +442,19 @@ struct PhosphorOverviewBody: View {
         case .note(let text):
             Text(text).foregroundStyle(Palette.mid)
         }
+    }
+
+    private var phosphorTrendTokens: UsageTrendTokens {
+        UsageTrendTokens(accent: Palette.mid,
+                         guide: Palette.dim,
+                         text: Palette.bright,
+                         dim: Palette.mid,
+                         lineWidth: 1,
+                         pointSize: surface == .desktop ? 4 : 3,
+                         pointShape: .square,
+                         background: nil,
+                         border: nil,
+                         font: desktopFont ?? .caption)
     }
 }
 
@@ -528,7 +546,11 @@ struct TUIOverviewBody: View {
                 }
             }
         case .sparkline(let spark):
-            sparklineGauge(spark)
+            UsageTrendView(content: spark,
+                           tokens: tuiTrendTokens,
+                           variant: surface.trendVariant,
+                           showHeader: false)
+                .padding(.leading, 24)
         case .burnRate(let burn):
             Text("[\(burn.text)]")
                 .font(.caption)
@@ -573,21 +595,6 @@ struct TUIOverviewBody: View {
         .accessibilityHidden(true)
     }
 
-    // Спарклайн [▁▂▄█…] 7d в стиле датчика: заполнено = использовано, ширина 24 глифа.
-    private func sparklineGauge(_ spark: SparklineContent) -> some View {
-        (
-            Text("[")
-            + Text(AsciiSparkline.render(spark, width: 24))
-                .foregroundStyle(Palette.normal)
-            + Text("]")
-            + Text(" 7d")
-        )
-        .foregroundStyle(Palette.dim)
-        .padding(.leading, 24)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("7-day usage trend")
-    }
-
     private func severityColor(_ severity: Severity) -> Color {
         switch severity {
         case .normal:   return Palette.normal
@@ -610,6 +617,19 @@ struct TUIOverviewBody: View {
         case .incomplete:  return Palette.warning
         case .unavailable: return Palette.dim
         }
+    }
+
+    private var tuiTrendTokens: UsageTrendTokens {
+        UsageTrendTokens(accent: Palette.normal,
+                         guide: Palette.border,
+                         text: Palette.fg,
+                         dim: Palette.dim,
+                         lineWidth: 1,
+                         pointSize: surface == .desktop ? 4 : 3,
+                         pointShape: .square,
+                         background: nil,
+                         border: nil,
+                         font: desktopFont ?? .caption)
     }
 }
 

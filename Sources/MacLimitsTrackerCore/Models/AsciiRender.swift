@@ -10,7 +10,8 @@ public enum AsciiBar {
     }
 }
 
-/// Мини-гистограмма (sparkline) темы Terminal/Phosphor: `▃▇▅▁█` (заполнено = использовано).
+/// Мини-гистограмма (sparkline) темы Terminal/Phosphor: `▃▇▅▁█` (заполнено = остаток,
+/// чтобы направление линии совпадало с процентом remaining рядом в summary).
 public enum AsciiSparkline {
     private static let blocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
 
@@ -46,7 +47,7 @@ public enum AsciiSparkline {
     /// Трейлинг 7-дневный тренд (Core-модель `SparklineContent`): рендер его точек
     /// спарклайном заданной ширины. Пустая история → пустая строка (не ложная серия).
     public static func render(_ trend: SparklineContent, width: Int = 24) -> String {
-        render(usedPercents: trend.points.map(\.usedPercent), width: width)
+        render(usedPercents: trend.points.map(\.remainingPercent), width: width)
     }
 }
 
