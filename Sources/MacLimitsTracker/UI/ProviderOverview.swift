@@ -33,7 +33,7 @@ struct ProviderOverview: View {
 enum TerminalPalette {
     static let bg = Color(hex: 0x1A1B26)
     static let fg = Color(hex: 0xC0CAF5)
-    static let dim = Color(hex: 0x565F89)
+    static let dim = Color(hex: 0xA9B1D6)
     static let track = Color(hex: 0x2F334D)
     static let cyan = Color(hex: 0x7DCFFF)
     static let warning = Color(hex: 0xE0AF68)
@@ -44,7 +44,7 @@ enum PhosphorPalette {
     static let bg = Color(hex: 0x050805)
     static let bright = Color(hex: 0x35E06A)
     static let mid = Color(hex: 0x1E9C48)
-    static let dim = Color(hex: 0x164A26)
+    static let dim = Color(hex: 0x58C978)
     static let heading = Color(hex: 0x8DFFB0)
 }
 
@@ -52,7 +52,7 @@ enum TuiPalette {
     static let bg = Color(hex: 0x101216)
     static let fg = Color(hex: 0xD0D5DD)
     static let border = Color(hex: 0x3A4150)
-    static let dim = Color(hex: 0x5A6374)
+    static let dim = Color(hex: 0xAAB4C5)
     static let normal = Color(hex: 0x9ECE6A)
     static let warning = Color(hex: 0xE0AF68)
     static let critical = Color(hex: 0xF7768E)
@@ -237,7 +237,7 @@ struct TerminalOverviewBody: View {
                         .frame(width: 20, alignment: .leading)
                     bar(w, accent: accent)
                     Text(w.remainingText).monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
+                        .frame(minWidth: 36, alignment: .trailing)
                 }
                 if let reset = w.resetText {
                     Text("resets \(reset)")
@@ -383,7 +383,8 @@ struct PhosphorOverviewBody: View {
                         Text(AsciiBar.render(remainingPercent: w.remainingPercent))
                             .accessibilityHidden(true)
                     }
-                    Text(w.remainingText).monospacedDigit()
+                    Text(w.severity == .warning ? "! \(w.remainingText)" : w.remainingText)
+                        .monospacedDigit()
                 }
                 if let reset = w.resetText {
                     Text("reset \(reset)")
@@ -391,6 +392,8 @@ struct PhosphorOverviewBody: View {
                         .padding(.leading, 26)
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(w.longLabel), \(w.remainingText) remaining, \(severityLabel(w.severity))")
         case .sparkline(let spark):
             (Text("7d ").foregroundStyle(Palette.dim)
              + Text(AsciiSparkline.render(spark)))
@@ -417,6 +420,14 @@ struct PhosphorOverviewBody: View {
             Text("! \(message)").foregroundStyle(Palette.heading)
         case .note(let text):
             Text(text).foregroundStyle(Palette.mid)
+        }
+    }
+
+    private func severityLabel(_ severity: Severity) -> String {
+        switch severity {
+        case .normal: return "normal"
+        case .warning: return "warning"
+        case .critical: return "critical"
         }
     }
 }
@@ -500,7 +511,7 @@ struct TUIOverviewBody: View {
                         .frame(width: 20, alignment: .leading)
                     gauge(w)
                     Text(w.remainingText).monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
+                        .frame(minWidth: 36, alignment: .trailing)
                 }
                 if let reset = w.resetText {
                     Text("reset \(reset)")
@@ -586,6 +597,7 @@ struct TUIOverviewBody: View {
         case .unavailable: return Palette.dim
         }
     }
+
 }
 
 // MARK: - Previews

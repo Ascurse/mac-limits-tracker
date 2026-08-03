@@ -25,8 +25,8 @@ struct DisplaySettingsSection: View {
     }
 
     var body: some View {
-        VStack(spacing: spacing) {
-            Picker("Theme", selection: Binding(
+        VStack(alignment: .leading, spacing: spacing) {
+            Picker("Popup theme", selection: Binding(
                 get: { viewModel.appTheme },
                 set: { viewModel.setAppTheme($0) }
             )) {
@@ -34,7 +34,9 @@ struct DisplaySettingsSection: View {
             }
             .pickerStyle(.menu)
             .controlSize(controlSize)
-            .accessibilityLabel("Theme")
+            .accessibilityLabel("Popup theme")
+            .accessibilityHint("Applies to the menu-bar popup. The desktop widget keeps its neutral dark appearance.")
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Picker("Menu bar", selection: Binding(
                 get: { viewModel.menuBarDisplayMode },
@@ -45,6 +47,7 @@ struct DisplaySettingsSection: View {
             .pickerStyle(.menu)
             .controlSize(controlSize)
             .accessibilityLabel("Menu bar")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

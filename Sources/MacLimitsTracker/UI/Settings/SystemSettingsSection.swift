@@ -28,7 +28,7 @@ struct SystemSettingsSection: View {
     }
 
     var body: some View {
-        VStack(spacing: spacing) {
+        VStack(alignment: .leading, spacing: spacing) {
             Toggle("Desktop widget", isOn: Binding(
                 get: { viewModel.showDesktopWidget },
                 set: { viewModel.setShowDesktopWidget($0) }
@@ -36,6 +36,7 @@ struct SystemSettingsSection: View {
             .toggleStyle(.switch)
             .controlSize(controlSize)
             .accessibilityLabel("Desktop widget")
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Toggle("Notifications", isOn: Binding(
                 get: { viewModel.notificationsEnabled },
@@ -44,6 +45,7 @@ struct SystemSettingsSection: View {
             .toggleStyle(.switch)
             .controlSize(controlSize)
             .accessibilityLabel("Notifications")
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Toggle("Launch at login", isOn: Binding(
                 get: { launchAtLogin.isEnabled },
@@ -53,6 +55,23 @@ struct SystemSettingsSection: View {
             .controlSize(controlSize)
             .disabled(!launchAtLogin.isAvailable)
             .accessibilityLabel("Launch at login")
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !launchAtLogin.isAvailable {
+                Text("Available only when running the bundled app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Launch at login is unavailable for an unbundled app")
+            } else if launchAtLogin.status == .requiresApproval {
+                Button("Open Login Items…") {
+                    launchAtLogin.openLoginItems()
+                }
+                .buttonStyle(.borderless)
+                .controlSize(controlSize)
+                .help("Approve this app in System Settings → General → Login Items")
+                .accessibilityLabel("Open Login Items settings")
+                .accessibilityHint("Approve this app to enable launch at login")
+            }
         }
         // Система — источник истины по login item: перечитываем при каждом открытии поверхности.
         .onAppear { launchAtLogin.syncStatus() }
