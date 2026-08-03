@@ -503,6 +503,15 @@ public final class CodexAppServerRpc {
                 resolve(.failure(.noResponseWithId(2)))
                 return
             }
+
+            // 🛡️ Security: Limit buffer size to prevent memory exhaustion (DoS) from unbounded output
+            if buffer.count + chunk.count > 5 * 1024 * 1024 { // 5MB limit
+                buffer.removeAll() // Clear buffer to prevent further memory usage
+                lock.unlock()
+                resolve(.failure(.spawnFailed("codex app-server output exceeded safe buffer limit")))
+                return
+            }
+
             buffer.append(chunk)
             var outcome: Result<Data, Error>?
             while let newlineRange = buffer.range(of: Data([0x0A])) {
