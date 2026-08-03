@@ -351,11 +351,14 @@ extension KimiLimitsProvider {
 public enum ProcessRunner {
     public enum RunError: Swift.Error, LocalizedError {
         case unsafeBinaryPath(String)
+        case outputExceededLimit
 
         public var errorDescription: String? {
             switch self {
             case .unsafeBinaryPath(let path):
                 return "unsafe binary path: \(path) (must be absolute)"
+            case .outputExceededLimit:
+                return "process output exceeded safe buffer limit"
             }
         }
     }
@@ -372,9 +375,30 @@ public enum ProcessRunner {
         // stderr не читается — направляем в /dev/null, чтобы заполненный буфер трубы не заблокировал дочерний процесс.
         process.standardError = FileHandle.nullDevice
         try process.run()
-        let outData = try pipe.fileHandleForReading.readToEnd()
+
+        let handle = pipe.fileHandleForReading
+        var outData = Data()
+        let maxLimit = 5 * 1024 * 1024 // 5MB limit
+
+        if #available(macOS 10.15.4, *) {
+            while let chunk = try handle.read(upToCount: 8192), !chunk.isEmpty {
+                if outData.count + chunk.count > maxLimit {
+                    process.terminate()
+                    throw RunError.outputExceededLimit
+                }
+                outData.append(chunk)
+            }
+        } else {
+            let data = handle.readDataToEndOfFile()
+            if data.count > maxLimit {
+                process.terminate()
+                throw RunError.outputExceededLimit
+            }
+            outData = data
+        }
+
         process.waitUntilExit()
-        return outData ?? Data()
+        return outData
     }
 
     /// Ищет бинарь `codex` среди типичных мест установки. Зеркало `defaultClaudeBinary`.
