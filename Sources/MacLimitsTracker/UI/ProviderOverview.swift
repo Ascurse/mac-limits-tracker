@@ -29,32 +29,107 @@ struct ProviderOverview: View {
     }
 }
 
+// Значения палитр живут в Core (`ThemePalette`) — так контраст проверяется
+// тестом; здесь только обёртки hex → Color.
+
 enum TerminalPalette {
-    static let bg = Color(hex: 0x1A1B26)
-    static let fg = Color(hex: 0xC0CAF5)
-    static let dim = Color(hex: 0x565F89)
-    static let track = Color(hex: 0x2F334D)
-    static let cyan = Color(hex: 0x7DCFFF)
-    static let warning = Color(hex: 0xE0AF68)
-    static let critical = Color(hex: 0xF7768E)
+    static let bg = Color(hex: ThemePalette.Terminal.bg)
+    static let fg = Color(hex: ThemePalette.Terminal.fg)
+    static let dim = Color(hex: ThemePalette.Terminal.dim)
+    static let track = Color(hex: ThemePalette.Terminal.track)
+    static let cyan = Color(hex: ThemePalette.Terminal.cyan)
+    static let warning = Color(hex: ThemePalette.Terminal.warning)
+    static let critical = Color(hex: ThemePalette.Terminal.critical)
 }
 
 enum PhosphorPalette {
-    static let bg = Color(hex: 0x050805)
-    static let bright = Color(hex: 0x35E06A)
-    static let mid = Color(hex: 0x1E9C48)
-    static let dim = Color(hex: 0x164A26)
-    static let heading = Color(hex: 0x8DFFB0)
+    static let bg = Color(hex: ThemePalette.Phosphor.bg)
+    static let bright = Color(hex: ThemePalette.Phosphor.bright)
+    static let mid = Color(hex: ThemePalette.Phosphor.mid)
+    static let dim = Color(hex: ThemePalette.Phosphor.dim)
+    static let heading = Color(hex: ThemePalette.Phosphor.heading)
 }
 
 enum TuiPalette {
-    static let bg = Color(hex: 0x101216)
-    static let fg = Color(hex: 0xD0D5DD)
-    static let border = Color(hex: 0x3A4150)
-    static let dim = Color(hex: 0x5A6374)
-    static let normal = Color(hex: 0x9ECE6A)
-    static let warning = Color(hex: 0xE0AF68)
-    static let critical = Color(hex: 0xF7768E)
+    static let bg = Color(hex: ThemePalette.Tui.bg)
+    static let fg = Color(hex: ThemePalette.Tui.fg)
+    static let border = Color(hex: ThemePalette.Tui.border)
+    static let dim = Color(hex: ThemePalette.Tui.dim)
+    static let normal = Color(hex: ThemePalette.Tui.normal)
+    static let warning = Color(hex: ThemePalette.Tui.warning)
+    static let critical = Color(hex: ThemePalette.Tui.critical)
+}
+
+/// Строка «ключ — значение» моноширинных тем. Пока пара помещается целиком,
+/// это одна строка со значением по правому краю; когда перестаёт — значение
+/// уходит на свою строку вместо того, чтобы сжиматься в многоточие.
+/// Обрезание остаётся последним средством, и тогда полное значение доступно
+/// в подсказке и озвучке.
+struct CompactKeyValueRow: View {
+    let key: String
+    let value: String
+    let keyColor: Color
+    var valueColor: Color?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                keyText
+                Spacer(minLength: 8)
+                valueText
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                keyText
+                valueText.lineLimit(1).truncationMode(.middle)
+            }
+        }
+        .help(value)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(key)
+        .accessibilityValue(value)
+    }
+
+    private var keyText: Text {
+        Text(key).foregroundStyle(keyColor)
+    }
+
+    private var valueText: some View {
+        let text = Text(value)
+        return (valueColor.map { text.foregroundStyle($0) } ?? text)
+            .monospacedDigit()
+    }
+}
+
+/// Кнопка «открыть CLI провайдера» в шапке секции. Пока подпись помещается,
+/// действие названо словом; когда ширины нет — остаётся иконка, но озвучка и
+/// подсказка не меняются. Одна иконка без подписи читалась как украшение, и
+/// смысл появлялся только при наведении (bd mac-limits-tracker-avs).
+struct ProviderOpenButton: View {
+    let loginHelp: LoginHelp
+    let providerTitle: String
+    var tint: Color?
+
+    var body: some View {
+        Button {
+            openProviderCLI(loginHelp)
+        } label: {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 3) {
+                    icon
+                    Text(LoginHelp.actionTitle).fixedSize()
+                }
+                icon
+            }
+            .foregroundStyle(tint ?? .accentColor)
+        }
+        .buttonStyle(.borderless)
+        .help(loginHelp.helpText)
+        .accessibilityLabel(loginHelp.accessibilityLabel(providerTitle: providerTitle))
+    }
+
+    private var icon: some View {
+        Image(systemName: "arrow.up.forward.app").accessibilityHidden(true)
+    }
 }
 
 /// Системная тема: текущий нативный вид сводки.
@@ -82,7 +157,7 @@ struct SystemOverviewBody: View {
                 rowView(row, accent: accent)
             }
         }
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -131,14 +206,8 @@ struct SystemOverviewBody: View {
                 .foregroundStyle(.primary)
             Spacer()
             if let loginHelp {
-                Button {
-                    openProviderCLI(loginHelp)
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                }
-                .buttonStyle(.borderless)
-                .help(loginHelp.helpText)
-                .accessibilityLabel("Open \(title)")
+                ProviderOpenButton(loginHelp: loginHelp, providerTitle: title)
+                    .font(.caption)
             }
         }
     }
@@ -201,22 +270,16 @@ struct TerminalOverviewBody: View {
                 }
                 Spacer()
                 if let loginHelp = s.descriptor.loginHelp {
-                    Button {
-                        openProviderCLI(loginHelp)
-                    } label: {
-                        Image(systemName: "arrow.up.forward.app")
-                            .foregroundStyle(Palette.cyan)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
+                    ProviderOpenButton(loginHelp: loginHelp,
+                                       providerTitle: s.title,
+                                       tint: Palette.cyan)
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row, accent: accent)
             }
         }
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -225,11 +288,8 @@ struct TerminalOverviewBody: View {
         case .detail(let key, let value):
             // Plan уже показан в заголовке секции.
             if key != "Plan" {
-                HStack {
-                    Text(key.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(value).lineLimit(1).truncationMode(.middle)
-                }
+                CompactKeyValueRow(key: key.lowercased(), value: value,
+                                   keyColor: Palette.dim)
             }
         case .window(let w):
             VStack(alignment: .leading, spacing: 2) {
@@ -237,8 +297,10 @@ struct TerminalOverviewBody: View {
                     Text(w.shortLabel).foregroundStyle(Palette.dim)
                         .frame(width: 20, alignment: .leading)
                     bar(w, accent: accent)
+                    // Процент не сжимаем: полоса растягивается, значение — нет.
                     Text(w.remainingText).monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
+                        .fixedSize()
+                        .frame(minWidth: 36, alignment: .trailing)
                 }
                 if let reset = w.resetText {
                     Text("resets \(reset)")
@@ -259,12 +321,9 @@ struct TerminalOverviewBody: View {
                 .padding(.leading, 26)
         case .cost(let c):
             VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(c.label.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
-                        .foregroundStyle(costValueColor(c.state))
-                }
+                CompactKeyValueRow(key: c.label.lowercased(), value: c.valueText,
+                                   keyColor: Palette.dim,
+                                   valueColor: costValueColor(c.state))
                 Text(c.footnoteText).foregroundStyle(Palette.dim)
             }
         case .error(let message):
@@ -296,6 +355,7 @@ struct TerminalOverviewBody: View {
                     .frame(width: max(4, geo.size.width * w.remainingPercent / 100))
             }
         }
+        .frame(minWidth: 24, idealWidth: 80)
         .frame(height: 4)
         .animation(.easeOut(duration: 0.3), value: w.remainingPercent)
     }
@@ -365,14 +425,14 @@ struct PhosphorOverviewBody: View {
                     }
                     .buttonStyle(.plain)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
+                    .accessibilityLabel(loginHelp.accessibilityLabel(providerTitle: s.title))
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
                 rowView(row)
             }
         }
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -392,17 +452,18 @@ struct PhosphorOverviewBody: View {
                     Text(w.shortLabel)
                         .foregroundStyle(Palette.mid)
                         .frame(width: 20, alignment: .leading)
+                    // Цветом монохромная тема состояния не различает, поэтому у
+                    // каждого — текстура полосы плюс маркер перед значением;
+                    // критичное сверх того инвертировано.
                     if w.severity == .critical {
-                        // Критичный остаток — инверсия: тёмный текст на яркой плашке.
-                        Text(AsciiBar.render(remainingPercent: w.remainingPercent))
-                            .foregroundStyle(Palette.bg)
-                            .background(Palette.bright)
-                            .accessibilityHidden(true)
+                        bar(w).foregroundStyle(Palette.bg).background(Palette.bright)
                     } else {
-                        Text(AsciiBar.render(remainingPercent: w.remainingPercent))
-                            .accessibilityHidden(true)
+                        bar(w)
                     }
-                    Text(w.remainingText).monospacedDigit()
+                    Text(w.severity.asciiMarker.isEmpty
+                         ? w.remainingText
+                         : "\(w.severity.asciiMarker) \(w.remainingText)")
+                        .monospacedDigit()
                 }
                 if let reset = w.resetText {
                     Text("reset \(reset)")
@@ -410,6 +471,8 @@ struct PhosphorOverviewBody: View {
                         .padding(.leading, 26)
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(w.longLabel), \(w.remainingText) remaining, \(w.severity.accessibilityLabel)")
         case .sparkline(let spark):
             UsageTrendView(content: spark,
                            tokens: phosphorTrendTokens,
@@ -442,6 +505,11 @@ struct PhosphorOverviewBody: View {
         case .note(let text):
             Text(text).foregroundStyle(Palette.mid)
         }
+    }
+
+    private func bar(_ w: WindowContent) -> some View {
+        Text(AsciiBar.render(remainingPercent: w.remainingPercent, severity: w.severity))
+            .accessibilityHidden(true)
     }
 
     private var phosphorTrendTokens: UsageTrendTokens {
@@ -506,7 +574,7 @@ struct TUIOverviewBody: View {
                     }
                     .buttonStyle(.plain)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
+                    .accessibilityLabel(loginHelp.accessibilityLabel(providerTitle: s.title))
                 }
             }
             .padding(.horizontal, 4)
@@ -515,7 +583,7 @@ struct TUIOverviewBody: View {
             .offset(x: 8, y: -8)
         }
         .padding(.top, 8)
-        .opacity(s.isStale ? 0.55 : 1)
+        .opacity(s.isStale ? StaleAppearance.opacity : 1)
     }
 
     @ViewBuilder
@@ -523,11 +591,8 @@ struct TUIOverviewBody: View {
         switch row {
         case .detail(let key, let value):
             if key != "Plan" {
-                HStack {
-                    Text(key.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(value).lineLimit(1).truncationMode(.middle)
-                }
+                CompactKeyValueRow(key: key.lowercased(), value: value,
+                                   keyColor: Palette.dim)
             }
         case .window(let w):
             VStack(alignment: .leading, spacing: 1) {
@@ -536,8 +601,10 @@ struct TUIOverviewBody: View {
                         .foregroundStyle(Palette.dim)
                         .frame(width: 20, alignment: .leading)
                     gauge(w)
+                    // Процент не сжимаем: датчик и так фиксированной ширины.
                     Text(w.remainingText).monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
+                        .fixedSize()
+                        .frame(minWidth: 36, alignment: .trailing)
                 }
                 if let reset = w.resetText {
                     Text("reset \(reset)")
@@ -558,12 +625,9 @@ struct TUIOverviewBody: View {
                 .padding(.leading, 24)
         case .cost(let c):
             VStack(alignment: .leading, spacing: 1) {
-                HStack {
-                    Text(c.label.lowercased()).foregroundStyle(Palette.dim)
-                    Spacer(minLength: 8)
-                    Text(c.valueText).lineLimit(1).truncationMode(.middle)
-                        .foregroundStyle(costValueColor(c.state))
-                }
+                CompactKeyValueRow(key: c.label.lowercased(), value: c.valueText,
+                                   keyColor: Palette.dim,
+                                   valueColor: costValueColor(c.state))
                 Text(c.footnoteText).foregroundStyle(Palette.dim)
             }
         case .error(let message):

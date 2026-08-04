@@ -7,13 +7,20 @@ import MacLimitsTrackerCore
 struct PopupFooter: View {
     @ObservedObject var viewModel: LimitsViewModel
     let launchAtLogin: LaunchAtLoginManager
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(spacing: 8) {
-            DisplaySettingsSection(viewModel: viewModel, surface: .menuBar)
-            RefreshSettingsSection(viewModel: viewModel, surface: .menuBar)
-            ProvidersSettingsSection(viewModel: viewModel, surface: .menuBar)
-            SystemSettingsSection(viewModel: viewModel, launchAtLogin: launchAtLogin, surface: .menuBar)
+            Button {
+                openSettings()
+            } label: {
+                Label("Open Settings…", systemImage: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.mini)
+            .help("Open Settings (⌘,)")
+            .accessibilityLabel("Open Settings")
+            .keyboardShortcut(",", modifiers: .command)
 
             HStack {
                 Spacer()

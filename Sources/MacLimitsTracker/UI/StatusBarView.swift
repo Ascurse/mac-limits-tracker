@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import MacLimitsTrackerCore
 
 /// Корень попапа статус-бара. Публичная точка входа для App.
@@ -12,6 +13,7 @@ public struct StatusBarView: View {
     let launchAtLogin: LaunchAtLoginManager
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.dismiss) private var dismissEnvironment
 
     init(viewModel: LimitsViewModel, launchAtLogin: LaunchAtLoginManager) {
         self.viewModel = viewModel
@@ -41,7 +43,10 @@ public struct StatusBarView: View {
         HStack {
             Spacer()
             Button {
-                openWindow(id: "main")
+                dismissPopup()
+                DispatchQueue.main.async {
+                    openWindow(id: "main")
+                }
             } label: {
                 Label("Open Limits Tracker", systemImage: "macwindow")
                     .labelStyle(.titleAndIcon)
@@ -52,7 +57,10 @@ public struct StatusBarView: View {
             .accessibilityLabel("Open Limits Tracker in Window")
             .keyboardShortcut("0", modifiers: .command)
             Button {
-                openSettings()
+                dismissPopup()
+                DispatchQueue.main.async {
+                    openSettings()
+                }
             } label: {
                 Label("Settings…", systemImage: "gearshape")
                     .labelStyle(.titleAndIcon)
@@ -66,5 +74,11 @@ public struct StatusBarView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 4)
+    }
+
+    private func dismissPopup() {
+        NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
+        dismissEnvironment()
+        NSApp.keyWindow?.close()
     }
 }

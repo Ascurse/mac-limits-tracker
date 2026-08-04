@@ -30,7 +30,7 @@ struct RefreshSettingsSection: View {
     }
 
     var body: some View {
-        VStack(spacing: spacing) {
+        VStack(alignment: .leading, spacing: spacing) {
             Picker("Refresh every", selection: Binding(
                 get: { viewModel.autoRefreshInterval },
                 set: { viewModel.setAutoRefreshInterval($0) }
@@ -40,8 +40,9 @@ struct RefreshSettingsSection: View {
             .pickerStyle(.menu)
             .controlSize(controlSize)
             .accessibilityLabel("Refresh every")
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack {
+            HStack(alignment: .firstTextBaseline, spacing: spacing) {
                 Picker("Warning at", selection: Binding(
                     get: { viewModel.severityThresholds.warningRemaining },
                     set: { warning in
@@ -53,6 +54,7 @@ struct RefreshSettingsSection: View {
                 .pickerStyle(.menu)
                 .controlSize(controlSize)
                 .accessibilityLabel("Warning at")
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Picker("Critical at", selection: Binding(
                     get: { viewModel.severityThresholds.criticalRemaining },
@@ -69,6 +71,7 @@ struct RefreshSettingsSection: View {
                 .pickerStyle(.menu)
                 .controlSize(controlSize)
                 .accessibilityLabel("Critical at")
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Toggle("Auto-refresh (\(viewModel.autoRefreshInterval.title))", isOn: Binding(
@@ -78,6 +81,7 @@ struct RefreshSettingsSection: View {
             .toggleStyle(.switch)
             .controlSize(controlSize)
             .accessibilityLabel("Auto-refresh")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

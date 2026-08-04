@@ -109,14 +109,14 @@ struct DesktopWidgetView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, window in
                     windowRow(window, color: color)
                 }
-                .opacity(0.55)
+                .opacity(StaleAppearance.opacity)
                 if let recovery {
                     Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
                         .font(.caption2)
                         .foregroundStyle(.red)
                         .lineLimit(2)
                         .help(recovery.diagnostic)
-                        .opacity(0.55)
+                        .opacity(StaleAppearance.opacity)
                 }
             } else if let recovery {
                 Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
