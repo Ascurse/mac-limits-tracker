@@ -614,7 +614,13 @@ public enum KeychainStore {
 
 /// Минимальный сетевой клиент: GET с Bearer-токеном.
 public enum Http {
-    internal static var sharedSession = URLSession(configuration: .ephemeral)
+    internal static var sharedSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        // 🛡️ Security: Explicit timeouts to prevent thread exhaustion (DoS) from hanging external API calls
+        config.timeoutIntervalForRequest = 15.0
+        config.timeoutIntervalForResource = 30.0
+        return URLSession(configuration: config)
+    }()
 
     /// `userAgent` по умолчанию — как у Claude Code CLI, чтобы не менять поведение
     /// существующих вызовов; провайдеры с другим API (напр. Kimi) передают свой.
