@@ -2,11 +2,30 @@ import Foundation
 
 /// Текстовая полоса прогресса темы Phosphor: `██████░░░░` (заполнено = остаток).
 public enum AsciiBar {
+    private static let empty: Character = "░"
+
     public static func render(remainingPercent: Double, width: Int = 14) -> String {
+        render(remainingPercent: remainingPercent, severity: .normal, width: width)
+    }
+
+    /// Глиф заполнения зависит от severity: монохромной теме нужен нецветовой
+    /// признак. Ряд «сплошное → плотное → разреженное» читается как убывание
+    /// остатка; доля заполнения при этом одинакова для всех состояний.
+    public static func render(remainingPercent: Double,
+                              severity: Severity,
+                              width: Int = 14) -> String {
         let clamped = min(100, max(0, remainingPercent))
         let filled = Int((clamped / 100 * Double(width)).rounded())
-        return String(repeating: "█", count: filled)
-             + String(repeating: "░", count: width - filled)
+        return String(repeating: fillGlyph(severity), count: filled)
+             + String(repeating: empty, count: width - filled)
+    }
+
+    private static func fillGlyph(_ severity: Severity) -> Character {
+        switch severity {
+        case .normal:   return "█"
+        case .warning:  return "▓"
+        case .critical: return "▒"
+        }
     }
 }
 

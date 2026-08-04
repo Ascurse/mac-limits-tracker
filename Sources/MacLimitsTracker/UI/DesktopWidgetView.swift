@@ -104,13 +104,13 @@ struct DesktopWidgetView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, window in
                     windowRow(window, color: color)
                 }
-                .opacity(0.55)
+                .opacity(StaleAppearance.opacity)
                 if let staleError = resolved.error {
                     Label(staleError, systemImage: "exclamationmark.triangle")
                         .font(.caption2)
                         .foregroundStyle(.red)
                         .lineLimit(2)
-                        .opacity(0.55)
+                        .opacity(StaleAppearance.opacity)
                 }
             } else if let error {
                 Label(error, systemImage: "exclamationmark.triangle")
