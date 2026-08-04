@@ -45,7 +45,7 @@ struct ProvidersSettingsSection: View {
                 .buttonStyle(.borderless)
                 .controlSize(controlSize)
                 .disabled(isCanonicalOrder(entries))
-                .help("Restore the default provider order")
+                .help(isCanonicalOrder(entries) ? "Order is already default" : "Restore the default provider order")
                 .accessibilityLabel("Reset provider order")
                 .accessibilityHint("Restores the default provider order")
             }
@@ -127,7 +127,7 @@ struct ProvidersSettingsSection: View {
             .buttonStyle(.borderless)
             .controlSize(controlSize)
             .disabled(isFirst)
-            .help("Move \(entry.descriptor.displayName) up")
+            .help(isFirst ? "Already at the top" : "Move \(entry.descriptor.displayName) up")
             .accessibilityLabel("Move \(entry.descriptor.displayName) up")
 
             Button {
@@ -138,7 +138,7 @@ struct ProvidersSettingsSection: View {
             .buttonStyle(.borderless)
             .controlSize(controlSize)
             .disabled(isLast)
-            .help("Move \(entry.descriptor.displayName) down")
+            .help(isLast ? "Already at the bottom" : "Move \(entry.descriptor.displayName) down")
             .accessibilityLabel("Move \(entry.descriptor.displayName) down")
         }
     }
