@@ -124,6 +124,10 @@ Swift Package с тремя таргетами:
   (`UI/ProviderOverview.swift`): `ViewThatFits` роняет значение на свою строку
   вместо сжатия в многоточие. Числовые значения окон помечены `.fixedSize()` —
   сжимается полоса, не процент.
+- Кнопка открытия CLI — общий `ProviderOpenButton` (`UI/ProviderOverview.swift`):
+  подпись `LoginHelp.actionTitle` показывается, пока помещается, иначе остаётся
+  иконка. Метку VoiceOver для всех тем даёт
+  `LoginHelp.accessibilityLabel(providerTitle:)` — не писать её литералом в теме.
 - Цвета тем — hex-константы в `Core/Models/ThemePalette.swift`; `TerminalPalette`/
   `PhosphorPalette`/`TuiPalette` в `UI/ProviderOverview.swift` только оборачивают
   их в `Color`. Новый цвет заводится в Core, иначе его не увидит гейт контраста

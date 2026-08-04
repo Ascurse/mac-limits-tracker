@@ -101,6 +101,38 @@ struct CompactKeyValueRow: View {
     }
 }
 
+/// Кнопка «открыть CLI провайдера» в шапке секции. Пока подпись помещается,
+/// действие названо словом; когда ширины нет — остаётся иконка, но озвучка и
+/// подсказка не меняются. Одна иконка без подписи читалась как украшение, и
+/// смысл появлялся только при наведении (bd mac-limits-tracker-avs).
+struct ProviderOpenButton: View {
+    let loginHelp: LoginHelp
+    let providerTitle: String
+    var tint: Color?
+
+    var body: some View {
+        Button {
+            openProviderCLI(loginHelp)
+        } label: {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 3) {
+                    icon
+                    Text(LoginHelp.actionTitle).fixedSize()
+                }
+                icon
+            }
+            .foregroundStyle(tint ?? .accentColor)
+        }
+        .buttonStyle(.borderless)
+        .help(loginHelp.helpText)
+        .accessibilityLabel(loginHelp.accessibilityLabel(providerTitle: providerTitle))
+    }
+
+    private var icon: some View {
+        Image(systemName: "arrow.up.forward.app").accessibilityHidden(true)
+    }
+}
+
 /// Системная тема: текущий нативный вид сводки.
 struct SystemOverviewBody: View {
     let sections: [ProviderSectionContent]
@@ -186,14 +218,8 @@ struct SystemOverviewBody: View {
                 .foregroundStyle(.primary)
             Spacer()
             if let loginHelp {
-                Button {
-                    openProviderCLI(loginHelp)
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                }
-                .buttonStyle(.borderless)
-                .help(loginHelp.helpText)
-                .accessibilityLabel("Open \(title)")
+                ProviderOpenButton(loginHelp: loginHelp, providerTitle: title)
+                    .font(.caption)
             }
         }
     }
@@ -243,15 +269,9 @@ struct TerminalOverviewBody: View {
                 }
                 Spacer()
                 if let loginHelp = s.descriptor.loginHelp {
-                    Button {
-                        openProviderCLI(loginHelp)
-                    } label: {
-                        Image(systemName: "arrow.up.forward.app")
-                            .foregroundStyle(Palette.cyan)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
+                    ProviderOpenButton(loginHelp: loginHelp,
+                                       providerTitle: s.title,
+                                       tint: Palette.cyan)
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
@@ -386,7 +406,7 @@ struct PhosphorOverviewBody: View {
                     }
                     .buttonStyle(.plain)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
+                    .accessibilityLabel(loginHelp.accessibilityLabel(providerTitle: s.title))
                 }
             }
             ForEach(Array(s.rows.enumerated()), id: \.offset) { _, row in
@@ -517,7 +537,7 @@ struct TUIOverviewBody: View {
                     }
                     .buttonStyle(.plain)
                     .help(loginHelp.helpText)
-                    .accessibilityLabel("Open \(s.title)")
+                    .accessibilityLabel(loginHelp.accessibilityLabel(providerTitle: s.title))
                 }
             }
             .padding(.horizontal, 4)

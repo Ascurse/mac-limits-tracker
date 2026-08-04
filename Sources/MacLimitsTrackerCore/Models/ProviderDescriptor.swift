@@ -9,6 +9,17 @@ public struct LoginHelp: Equatable, Sendable {
         self.helpText = helpText
         self.binaryPath = binaryPath
     }
+
+    /// Видимая подпись действия. Иконка без подписи читается как украшение —
+    /// смысл появлялся только при наведении курсора (bd mac-limits-tracker-avs).
+    /// Короткая: рядом с ней в шапке секции стоят имя провайдера и план.
+    public static let actionTitle = "Open"
+
+    /// Метка для VoiceOver: та же формулировка, что и у видимой подписи, плюс имя
+    /// провайдера — в попапе несколько секций, и просто «Open» их не различает.
+    public func accessibilityLabel(providerTitle: String) -> String {
+        "\(Self.actionTitle) \(providerTitle)"
+    }
 }
 
 /// Статичное самоописание провайдера: всё, что UI-слою нужно знать заранее,
