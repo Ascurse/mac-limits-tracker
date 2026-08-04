@@ -8,13 +8,19 @@ import MacLimitsTrackerCore
 /// В desktop-сценарии вызываем `viewModel.start()` (идемпотентно по 3ip.1)
 /// на появление, чтобы при первом открытии окна данные подтянулись, даже
 /// если menu bar popup ещё не показывался.
+///
+/// Геометрия (bd mac-limits-tracker-gld.3): контент живёт в одной читабельной
+/// колонке `DesktopDashboardLayout` (header, сводка провайдеров, Settings —
+/// общие leading/trailing), центрированной в вертикальном ScrollView. На
+/// широком окне по бокам остаются спокойные поля, а не растянутые графики;
+/// ограничение только maxWidth, поэтому ресайз и узкие окна не ломаются.
 struct DesktopWindowView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let launchAtLogin: LaunchAtLoginManager
     @State private var settingsExpanded = false
 
     var body: some View {
-        ScrollView(.vertical) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
                 ProviderOverview(
@@ -37,9 +43,14 @@ struct DesktopWindowView: View {
                 }
                 .accessibilityHint("Expand to edit shared settings")
             }
-            .padding(20)
+            .padding(DesktopDashboardLayout.horizontalPadding)
+            .frame(minWidth: DesktopDashboardLayout.minContentWidth,
+                   maxWidth: DesktopDashboardLayout.maxContentWidth,
+                   alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .frame(minWidth: 420, idealWidth: 520, minHeight: 320, idealHeight: 480)
+        .frame(minWidth: DesktopDashboardLayout.minWindowWidth, idealWidth: 520,
+               minHeight: 320, idealHeight: 480)
         .task { viewModel.start() }
     }
 

@@ -166,7 +166,7 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
 
     func test_providerError_isSingleErrorRow() {
         let s = section(makeStatus(providerError: "boom"))
-        XCTAssertEqual(s.rows, [.error("boom")])
+        XCTAssertEqual(s.rows, [recovery("Claude Code error — retry", action: .retry, diagnostic: "boom")])
     }
 
     func test_planRow_showsRawSubscriptionType() {
@@ -227,7 +227,8 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
 
     func test_usageError_shownWhenNoUsage() {
         let s = section(makeStatus(usageError: "token expired"))
-        XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "max"), .error("token expired")])
+        XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "max"),
+                                recovery("Claude Code error — retry", action: .retry, diagnostic: "token expired")])
     }
 
     func test_noUsageNoError_loadingUsageNote() {
@@ -275,7 +276,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
 
     func test_providerError_isSingleErrorRow() {
         let s = section(makeStatus(providerError: "no auth.json"))
-        XCTAssertEqual(s.rows, [.error("no auth.json")])
+        XCTAssertEqual(s.rows, [recovery("Codex error — retry", action: .retry, diagnostic: "no auth.json")])
     }
 
     func test_snapshotPlanTypeWinsOverJwtClaim() {
@@ -346,7 +347,7 @@ final class PopupContentBuilderCodexTests: XCTestCase {
             makeStatus(usageError: "app-server unavailable", authMode: nil, email: nil,
                        accountOwner: nil, daysUntilRenewal: nil, subscriptionActiveUntil: nil))
         XCTAssertEqual(s.rows, [.detail(key: "Plan", value: "plus"),
-                                .error("app-server unavailable")])
+                                recovery("Codex error — retry", action: .retry, diagnostic: "app-server unavailable")])
     }
 
     func test_nonStandardDurationWindow_rendersWithFallbackLabelInsteadOfDisappearing() {
@@ -431,7 +432,7 @@ final class PopupContentBuilderKimiTests: XCTestCase {
         XCTAssertEqual(s.title, "Kimi")
         XCTAssertEqual(s.rows, [
             .detail(key: "Plan", value: "kimi-pro"),
-            .error("Kimi login expired — open Kimi Code to refresh")
+            recovery("Kimi login expired — open Kimi Code to refresh", action: .openProviderCLI, diagnostic: "Kimi login expired — open Kimi Code to refresh")
         ])
     }
 
@@ -448,7 +449,7 @@ final class PopupContentBuilderKimiTests: XCTestCase {
                                 providerError: "kimi-code refresh token missing",
                                 fetchedAt: Self.sentinel)
         let s = section(status)
-        XCTAssertEqual(s.rows, [.error("kimi-code refresh token missing")])
+        XCTAssertEqual(s.rows, [recovery("Kimi not logged in — open Kimi Code to refresh", action: .openProviderCLI, diagnostic: "kimi-code refresh token missing")])
     }
 
     func test_nilStatus_isLoadingNote() {
@@ -536,7 +537,7 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
 
-        // Plan, 5h, burnRate 5h, sparkline 5h, wk.
+        // Plan, 5h, burnRate 5h, sparkline 5h, wk (weekly has no history → empty state, no row).
         XCTAssertEqual(s.rows.count, 5)
         guard case .window(let fh) = s.rows[1] else { return XCTFail("rows: \(s.rows)") }
         XCTAssertEqual(fh.shortLabel, "5h")
@@ -551,9 +552,11 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
         }
         XCTAssertEqual(spark.windowMins, 300)
         XCTAssertEqual(spark.shortLabel, "5h")
-        // Точки отсортированы по времени по возрастанию.
-        XCTAssertEqual(spark.points.map(\.usedPercent), [20, 30, 40])
+        XCTAssertEqual(spark.metric, .remainingPercent)
+        // Точки отсортированы по времени по возрастанию и переведены в remainingPercent.
+        XCTAssertEqual(spark.points.map(\.remainingPercent), [80, 70, 60])
         XCTAssertTrue(spark.points.map(\.time) == spark.points.map(\.time).sorted())
+        XCTAssertEqual(spark.dataState, .ok)
         guard case .window(let wk) = s.rows[4] else { return XCTFail("rows: \(s.rows)") }
         XCTAssertEqual(wk.shortLabel, "wk")
     }
@@ -578,23 +581,29 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
             sample(windowMins: 300, hoursAgo: -1, used: 90),
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
-        XCTAssertTrue(sparklines(s).isEmpty, "будущий сэмпл не должен попадать в тренд, а единственный оставшийся — < 2 точек")
+        // Единственная допустимая точка → sparse; UsageTrendView покажет её маркером и note.
+        let sparks = sparklines(s)
+        XCTAssertEqual(sparks.count, 1)
+        XCTAssertEqual(sparks.first?.dataState, .sparse(pointCount: 1, minimumNeeded: 2))
     }
 
     func test_section_samplesWithinRangeBoundary_included() {
         let history = [
-            sample(windowMins: 300, hoursAgo: 24 * 7 - 1, used: 10),
+            sample(windowMins: 300, hoursAgo: 2, used: 10),
             sample(windowMins: 300, hoursAgo: 1, used: 40),
         ]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
         let sparks = sparklines(s)
-        XCTAssertEqual(sparks.first?.points.map(\.usedPercent), [10, 40])
+        XCTAssertEqual(sparks.first?.points.map(\.remainingPercent), [90, 60])
     }
 
     func test_section_singleSample_noTrendRow() {
         let history = [sample(windowMins: 300, hoursAgo: 1, used: 40)]
         let s = PopupContentBuilder.section(makeState(), now: now, history: history)
-        XCTAssertTrue(sparklines(s).isEmpty, "единственная точка не формирует тренд")
+        // Единственная точка → sparse; UsageTrendView покажет маркер с note, а не уверенный график.
+        let sparks = sparklines(s)
+        XCTAssertEqual(sparks.count, 1)
+        XCTAssertEqual(sparks.first?.dataState, .sparse(pointCount: 1, minimumNeeded: 2))
     }
 
     func test_section_moreThanMaxPoints_downsamplesKeepingLatestPerBucket() {
@@ -667,7 +676,8 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
             return XCTFail("спарклайн обязан строиться по last-good снапшоту, rows: \(s.rows)")
         }
         XCTAssertEqual(spark.windowMins, 300)
-        XCTAssertEqual(spark.points.map(\.usedPercent), [40, 45])
+        XCTAssertEqual(spark.points.map(\.remainingPercent), [60, 55])
+        XCTAssertEqual(spark.metric, .remainingPercent)
     }
 
     func test_section_insufficientHistory_noBurnRateRow() {
@@ -759,7 +769,7 @@ final class PopupContentBuilderStaleTests: XCTestCase {
             return XCTFail("ожидалась .note 'updated ... ago', rows: \(s.rows)")
         }
         XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
-        XCTAssertEqual(s.rows[4], .error("network down"))
+        XCTAssertEqual(s.rows[4], recovery("Claude Code error — retry", action: .retry, diagnostic: "network down"))
     }
 
     func test_providerErrorWithoutLastGood_isSingleErrorRowAndNotStale() {
@@ -768,7 +778,7 @@ final class PopupContentBuilderStaleTests: XCTestCase {
         let s = PopupContentBuilder.section(state, now: Self.now)
 
         XCTAssertFalse(s.isStale)
-        XCTAssertEqual(s.rows, [.error("no auth.json")])
+        XCTAssertEqual(s.rows, [recovery("Claude Code error — retry", action: .retry, diagnostic: "no auth.json")])
     }
 
     func test_staleUsageError_mergesFreshPlanWithLastGoodWindows() {
@@ -792,7 +802,7 @@ final class PopupContentBuilderStaleTests: XCTestCase {
             return XCTFail("ожидалась .note 'updated ... ago', rows: \(s.rows)")
         }
         XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
-        XCTAssertEqual(s.rows[4], .error("usage endpoint 500"))
+        XCTAssertEqual(s.rows[4], recovery("Claude Code error — retry", action: .retry, diagnostic: "usage endpoint 500"))
     }
 
     func test_updatedText_staleUsesLastGoodFetchedAt() {
@@ -932,6 +942,135 @@ final class PopupContentBuilderSectionsTests: XCTestCase {
             return XCTFail("expected note 'updated ... ago', rows: \(sections[0].rows)")
         }
         XCTAssertTrue(note.hasPrefix("updated "), "note: \(note)")
-        XCTAssertEqual(sections[0].rows[3], .error("network down"))
+        XCTAssertEqual(sections[0].rows[3], recovery("Claude Code error — retry", action: .retry, diagnostic: "network down"))
+    }
+}
+
+private func recovery(_ primaryText: String, action: ProviderRecoveryAction, diagnostic: String) -> PopupRow {
+    .recovery(ProviderRecoveryContent(primaryText: primaryText, action: action, diagnostic: diagnostic))
+}
+
+/// Контракт 7-дневного тренда: единая метрика remainingPercent, сортировка,
+/// клемпирование, дедуп timestamp, минимум точек, разрывы, empty/sparse.
+final class SparklineTrendContractTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private var rangeStart: Date { now.addingTimeInterval(-7 * 24 * 3600) }
+    private var rangeEnd: Date { now }
+
+    private func sample(hoursAgo: Double, used: Double, windowMins: Int = 300) -> UsageSample {
+        UsageSample(providerId: "claude", windowMins: windowMins,
+                    fetchedAt: now.addingTimeInterval(-hoursAgo * 3600),
+                    usedPercent: used, resetsAt: nil)
+    }
+
+    private func trendContent(
+        samples: [UsageSample],
+        currentUsed: Double = 50,
+        windowMins: Int = 300,
+        minPoints: Int = 2,
+        gapThreshold: TimeInterval = 24 * 3600
+    ) -> SparklineContent {
+        PopupContentBuilder.trendContent(
+            samples: samples,
+            windowMins: windowMins,
+            shortLabel: "5h",
+            windowLabel: "5-hour",
+            currentUsedPercent: currentUsed,
+            rangeStart: rangeStart,
+            rangeEnd: rangeEnd,
+            minPoints: minPoints,
+            gapThreshold: gapThreshold
+        )
+    }
+
+    // MARK: — conversion/clamp/sort/dup
+
+    func test_conversion_usedPercentBecomesRemainingPercent() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 3, used: 20),
+            sample(hoursAgo: 1, used: 40),
+        ])
+        XCTAssertEqual(trend.metric, .remainingPercent)
+        XCTAssertEqual(trend.points.map(\.remainingPercent), [80, 60])
+    }
+
+    func test_clamp_remainingPercentClampedTo0To100() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 2, used: -20),
+            sample(hoursAgo: 1, used: 150),
+        ])
+        XCTAssertEqual(trend.points.map(\.remainingPercent), [100, 0])
+    }
+
+    func test_rangeBoundary_sampleAtRangeStart_isIncluded() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 24 * 7 - 1, used: 10),
+            sample(hoursAgo: 24 * 7 - 2, used: 20),
+            sample(hoursAgo: 1, used: 40),
+        ])
+        XCTAssertEqual(trend.points.count, 3)
+        XCTAssertEqual(trend.points.first?.remainingPercent, 90)
+    }
+
+    func test_sort_pointsAreChronological() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 1, used: 10),
+            sample(hoursAgo: 5, used: 30),
+            sample(hoursAgo: 2, used: 20),
+        ])
+        XCTAssertEqual(trend.points.map(\.remainingPercent), [70, 80, 90])
+        XCTAssertTrue(trend.points.map(\.time) == trend.points.map(\.time).sorted())
+    }
+
+    func test_duplicateTimestamp_keepsLast() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 1, used: 10),
+            sample(hoursAgo: 1, used: 50),
+        ])
+        XCTAssertEqual(trend.points.count, 1)
+        XCTAssertEqual(trend.points.first?.remainingPercent, 50)
+    }
+
+    // MARK: — gap
+
+    func test_gap_largeGapBetweenPoints_returnsGapState() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 1, used: 20),
+            sample(hoursAgo: 48, used: 30),
+        ])
+        guard case .gap(let gap, let threshold) = trend.dataState else {
+            return XCTFail("ожидался .gap, получен \(trend.dataState)")
+        }
+        XCTAssertGreaterThan(gap, 24 * 3600)
+        XCTAssertEqual(threshold, 24 * 3600)
+    }
+
+    // MARK: — empty/sparse/ok
+
+    func test_empty_noSamples_returnsEmptyState() {
+        let trend = trendContent(samples: [])
+        XCTAssertEqual(trend.dataState, .empty)
+        XCTAssertTrue(trend.points.isEmpty)
+        XCTAssertEqual(trend.fallbackText, "7d — no history")
+    }
+
+    func test_sparse_oneSample_returnsSparseState() {
+        let trend = trendContent(samples: [sample(hoursAgo: 1, used: 40)])
+        guard case .sparse(let count, let min) = trend.dataState else {
+            return XCTFail("ожидался .sparse, получен \(trend.dataState)")
+        }
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(min, 2)
+        XCTAssertEqual(trend.fallbackText, "7d — 1 sample, need 2")
+    }
+
+    func test_ok_enoughPointsNoGap_returnsOkState() {
+        let trend = trendContent(samples: [
+            sample(hoursAgo: 3, used: 20),
+            sample(hoursAgo: 2, used: 25),
+            sample(hoursAgo: 1, used: 30),
+        ])
+        XCTAssertEqual(trend.dataState, .ok)
+        XCTAssertEqual(trend.points.map(\.remainingPercent), [80, 75, 70])
     }
 }

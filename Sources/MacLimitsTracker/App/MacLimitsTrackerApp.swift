@@ -35,6 +35,7 @@ struct MacLimitsTrackerApp: App {
         // AppDelegate вызовет её из `applicationDidFinishLaunching`.
         self.windowPresentationController = controller
         appDelegate.windowPresentationController = controller
+        appDelegate.viewModel = viewModel
     }
 
     var body: some Scene {

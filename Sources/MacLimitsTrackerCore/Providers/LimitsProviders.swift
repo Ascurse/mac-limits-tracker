@@ -351,11 +351,14 @@ extension KimiLimitsProvider {
 public enum ProcessRunner {
     public enum RunError: Swift.Error, LocalizedError {
         case unsafeBinaryPath(String)
+        case outputExceededLimit
 
         public var errorDescription: String? {
             switch self {
             case .unsafeBinaryPath(let path):
                 return "unsafe binary path: \(path) (must be absolute)"
+            case .outputExceededLimit:
+                return "process output exceeded safe buffer limit"
             }
         }
     }
@@ -372,9 +375,30 @@ public enum ProcessRunner {
         // stderr не читается — направляем в /dev/null, чтобы заполненный буфер трубы не заблокировал дочерний процесс.
         process.standardError = FileHandle.nullDevice
         try process.run()
-        let outData = try pipe.fileHandleForReading.readToEnd()
+
+        let handle = pipe.fileHandleForReading
+        var outData = Data()
+        let maxLimit = 5 * 1024 * 1024 // 5MB limit
+
+        if #available(macOS 10.15.4, *) {
+            while let chunk = try handle.read(upToCount: 8192), !chunk.isEmpty {
+                if outData.count + chunk.count > maxLimit {
+                    process.terminate()
+                    throw RunError.outputExceededLimit
+                }
+                outData.append(chunk)
+            }
+        } else {
+            let data = handle.readDataToEndOfFile()
+            if data.count > maxLimit {
+                process.terminate()
+                throw RunError.outputExceededLimit
+            }
+            outData = data
+        }
+
         process.waitUntilExit()
-        return outData ?? Data()
+        return outData
     }
 
     /// Ищет бинарь `codex` среди типичных мест установки. Зеркало `defaultClaudeBinary`.
@@ -503,6 +527,15 @@ public final class CodexAppServerRpc {
                 resolve(.failure(.noResponseWithId(2)))
                 return
             }
+
+            // 🛡️ Security: Limit buffer size to prevent memory exhaustion (DoS) from unbounded output
+            if buffer.count + chunk.count > 5 * 1024 * 1024 { // 5MB limit
+                buffer.removeAll() // Clear buffer to prevent further memory usage
+                lock.unlock()
+                resolve(.failure(.spawnFailed("codex app-server output exceeded safe buffer limit")))
+                return
+            }
+
             buffer.append(chunk)
             var outcome: Result<Data, Error>?
             while let newlineRange = buffer.range(of: Data([0x0A])) {
