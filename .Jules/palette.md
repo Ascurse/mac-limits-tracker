@@ -11,3 +11,7 @@
 ## 2026-08-01 - [ASCII UI and Screen Readers]
 **Learning:** Text-based ASCII art (like custom `[|||···]` progress bars, sparklines, or terminal UI elements like `$ ▮`) creates a terrible, noisy experience for VoiceOver users by forcing the screen reader to enumerate punctuation and symbols character-by-character.
 **Action:** When building ASCII-heavy themes (like Terminal/TUI), explicitly wrap these components with `.accessibilityHidden(true)` if they are purely decorative, or use `.accessibilityElement(children: .ignore)` and apply a semantic `.accessibilityLabel` for informative UI.
+
+## 2024-08-01 - [Disabled State Explanations]
+**Learning:** Users can be confused when a button is disabled without explanation, leading them to think the app is broken.
+**Action:** When disabling buttons based on state, dynamically update the `.help()` tooltip to explain *why* it's disabled (e.g. "Order is already default" or "Already at the top").
