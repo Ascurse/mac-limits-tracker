@@ -364,7 +364,15 @@ public enum ProcessRunner {
     }
 
     public static func run(_ binary: String, _ args: [String]) async throws -> Data {
-        guard binary.hasPrefix("/") else {
+        guard binary.hasPrefix("/"), !binary.contains("..") else {
+            throw RunError.unsafeBinaryPath(binary)
+        }
+        let binDir = (binary as NSString).deletingLastPathComponent + "/"
+        let safePrefixes = ["/opt/homebrew/bin/", "/usr/local/bin/", "/usr/bin/", "/bin/"]
+        let isSafeSystem = safePrefixes.contains(where: { binDir.hasPrefix($0) })
+        let isSafeLocal = binDir.hasPrefix("/Users/") && binDir.hasSuffix("/.local/bin/")
+
+        guard isSafeSystem || isSafeLocal else {
             throw RunError.unsafeBinaryPath(binary)
         }
         let process = Process()

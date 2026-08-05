@@ -1,23 +1,10 @@
-## 2024-11-28 - Secure local file permissions
+## 2025-02-14 - Arbitrary Subprocess Execution via Unsafe Binary Path
 
-**Vulnerability:** Local JSON state files containing history data were created without specific file permissions (using `attributes: nil`), which could potentially expose local user data.
-**Learning:** In macOS, using `FileManager.default.createFile` with `attributes: nil` might default to broader permissions than necessary. For files storing sensitive local data or user history, explicit file permissions should be enforced.
-**Prevention:** Always explicitly use `attributes: [.posixPermissions: 0o600]` when creating local state files via `FileManager` to restrict access strictly to the owner and enforce the principle of least privilege.
+**Vulnerability:**
+The application used `guard binary.hasPrefix("/")` to validate paths for subprocess execution. This allowed attackers to execute arbitrary binaries if they provided custom paths (e.g., via environment variables) such as `/tmp/malicious_bin`. It also lacked directory traversal checks, theoretically allowing inputs like `/usr/bin/../../tmp/malicious_bin`.
 
-## 2025-05-24 - Buffer overflow prevention when parsing external process stdout
+**Learning:**
+Prefix validation (`hasPrefix("/")`) is insufficient for security boundaries. Path validation must restrict the effective directory of the binary to known, safe execution contexts and explicitly reject path traversal elements (`..`).
 
-**Vulnerability:** The JSON-RPC implementation `CodexAppServerRpc` read stdout directly into an unbound `Data` buffer (`buffer.append(chunk)`) while waiting for a newline delimiter, opening up the application to possible memory exhaustion (DoS).
-**Learning:** Even when the local process (`codex app-server`) is considered trusted, defense-in-depth requires setting reasonable boundaries on memory accumulation from external I/O pipes. Unbounded buffered reads are a common vector for crashes/DoS.
-**Prevention:** Enforce a strict buffer capacity limit on all stream readers and forcefully close/terminate the operation if it is exceeded.
-
-## 2025-05-25 - Prevent DoS from unbounded external process output
-
-**Vulnerability:** The `ProcessRunner.run` utility read standard output from external processes (like `claude auth status`) directly into memory using `pipe.fileHandleForReading.readToEnd()`. This allows a compromised or malfunctioning external process to exhaust application memory.
-**Learning:** Utilities that execute arbitrary external processes should never read output without bound, even if the processes are considered trusted, to adhere to defense-in-depth principles.
-**Prevention:** Always read external process output in bounded chunks and terminate the process if a safe memory threshold (e.g., 5MB) is exceeded.
-
-## 2024-05-25 - Prevent DoS from hanging external API calls
-
-**Vulnerability:** External API requests made via `URLSession(configuration: .ephemeral)` used default configurations which have a very high timeout (60 seconds for requests, 7 days for resources). This allows malicious or unresponsive external servers to hold connections open indefinitely, potentially exhausting threads and application resources (Denial of Service).
-**Learning:** Network requests interacting with external servers should never use unbounded or overly generous default timeouts, as this represents a vector for resource exhaustion.
-**Prevention:** Always specify explicitly constrained values for `timeoutIntervalForRequest` and `timeoutIntervalForResource` when configuring `URLSession`.
+**Prevention:**
+Always restrict subprocess execution paths to an explicit whitelist of safe directories (e.g., `/usr/bin/`, `/opt/homebrew/bin/`, or specific user local bins) and enforce checks against directory traversal (`!binary.contains("..")`). Ensure that any path resolution or string manipulation accurately determines the root directory of the binary before validating it against the whitelist.
