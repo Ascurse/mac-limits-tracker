@@ -147,8 +147,10 @@ enum KimiUsagesParser {
         let membershipLevel: String?
     }
 
+    private static let decoder = JSONDecoder()
+
     static func parse(_ data: Data) -> Parsed? {
-        guard let resp = try? JSONDecoder().decode(KimiUsagesResponseJSON.self, from: data) else {
+        guard let resp = try? decoder.decode(KimiUsagesResponseJSON.self, from: data) else {
             return nil
         }
         let windows = (resp.limits ?? [])
