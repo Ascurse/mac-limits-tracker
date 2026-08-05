@@ -8,6 +8,7 @@ struct KimiTokenRefresher {
     static let defaultDeviceIDURL = FileManager.default
         .homeDirectoryForCurrentUser
         .appendingPathComponent(".kimi-code/device_id")
+    private static let sharedDecoder = JSONDecoder()
 
     let fileReader: (URL) async throws -> Data
     let httpPostForm: (
@@ -62,7 +63,7 @@ struct KimiTokenRefresher {
         case 200:
             let response: KimiOAuthTokenResponse
             do {
-                response = try JSONDecoder().decode(
+                response = try Self.sharedDecoder.decode(
                     KimiOAuthTokenResponse.self, from: body
                 )
             } catch {
@@ -104,7 +105,7 @@ struct KimiTokenRefresher {
         old: KimiCredentialsFile, credentialsURL: URL
     ) async throws -> KimiCredentialsFile? {
         guard let data = try? await fileReader(credentialsURL),
-              let file = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data),
+              let file = try? Self.sharedDecoder.decode(KimiCredentialsFile.self, from: data),
               !file.refreshToken.isEmpty,
               file.accessToken != old.accessToken,
               let expiresAt = file.expiresAt,
