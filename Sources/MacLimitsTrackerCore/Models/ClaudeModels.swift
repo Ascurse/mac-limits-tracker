@@ -162,8 +162,10 @@ struct ClaudeKeychainCredentialsJSON: Decodable {
 /// Извлекает access-токен и срок его действия из ключичной записи Claude Code.
 /// Сам токен не логируется и не персистится — только передаётся в HTTP-заголовок.
 enum ClaudeKeychainCredentialsParser {
+    private static let decoder = JSONDecoder()
+
     static func accessToken(_ data: Data) -> (token: String, expiresAt: Date?)? {
-        guard let json = try? JSONDecoder().decode(ClaudeKeychainCredentialsJSON.self, from: data),
+        guard let json = try? decoder.decode(ClaudeKeychainCredentialsJSON.self, from: data),
               let oauth = json.claudeAiOauth else { return nil }
         let exp = oauth.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000.0) }
         return (oauth.accessToken, exp)
