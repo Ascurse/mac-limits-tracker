@@ -52,8 +52,10 @@ struct ClaudeAuthStatus: Equatable {
 
 /// Чистый парсер stdin `claude auth status --json`.
 enum ClaudeAuthParser {
+    private static let decoder = JSONDecoder()
+
     static func parse(_ data: Data) -> ClaudeAuthStatus {
-        guard let json = try? JSONDecoder().decode(ClaudeAuthStatusJSON.self, from: data) else {
+        guard let json = try? decoder.decode(ClaudeAuthStatusJSON.self, from: data) else {
             return ClaudeAuthStatus(loggedIn: false, authMethod: nil, apiProvider: nil,
                                     email: nil, subscriptionType: nil, orgName: nil)
         }
@@ -122,6 +124,12 @@ struct ClaudeUsageJSON: Decodable {
 
 /// Чистый парсер ответа `/api/oauth/usage`.
 enum ClaudeUsageParser {
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }()
+
     static let iso8601WithFractionalSeconds: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -129,8 +137,6 @@ enum ClaudeUsageParser {
     }()
 
     static func parse(_ data: Data) -> ClaudeUsage? {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         guard let json = try? decoder.decode(ClaudeUsageJSON.self, from: data) else { return nil }
         return ClaudeUsage(
             fiveHour: json.fiveHour.map(parseWindow),
@@ -162,8 +168,10 @@ struct ClaudeKeychainCredentialsJSON: Decodable {
 /// Извлекает access-токен и срок его действия из ключичной записи Claude Code.
 /// Сам токен не логируется и не персистится — только передаётся в HTTP-заголовок.
 enum ClaudeKeychainCredentialsParser {
+    private static let decoder = JSONDecoder()
+
     static func accessToken(_ data: Data) -> (token: String, expiresAt: Date?)? {
-        guard let json = try? JSONDecoder().decode(ClaudeKeychainCredentialsJSON.self, from: data),
+        guard let json = try? decoder.decode(ClaudeKeychainCredentialsJSON.self, from: data),
               let oauth = json.claudeAiOauth else { return nil }
         let exp = oauth.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000.0) }
         return (oauth.accessToken, exp)
