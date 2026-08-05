@@ -90,6 +90,36 @@ final class KimiUsagesParserTests: XCTestCase {
         let parsed = try XCTUnwrap(KimiUsagesParser.parse(json))
         XCTAssertNotNil(parsed.usage.windows.first?.resetsAt)
     }
+
+    func test_parse_multipleLimits_sortsByDurationAscending() throws {
+        let json = sampleJSON(limitsJSON: """
+        [
+          {"window":{"duration":2,"timeUnit":"TIME_UNIT_HOUR"}, "detail":{"limit":"10","remaining":"4","resetTime":"2026-07-23T08:15:06Z"}},
+          {"window":{"duration":30,"timeUnit":"TIME_UNIT_MINUTE"}, "detail":{"limit":"10","remaining":"4","resetTime":"2026-07-23T08:15:06Z"}},
+          {"window":{"duration":1,"timeUnit":"TIME_UNIT_DAY"}, "detail":{"limit":"10","remaining":"4","resetTime":"2026-07-23T08:15:06Z"}}
+        ]
+        """)
+        let parsed = try XCTUnwrap(KimiUsagesParser.parse(json))
+        let windows = parsed.usage.windows
+        XCTAssertEqual(windows.count, 3)
+        XCTAssertEqual(windows[0].windowDurationMins, 30)
+        XCTAssertEqual(windows[1].windowDurationMins, 120)
+        XCTAssertEqual(windows[2].windowDurationMins, 1440)
+    }
+
+    func test_parse_limitsWithMissingDuration_sortsThemLast() throws {
+        let json = sampleJSON(limitsJSON: """
+        [
+          {"window":{}, "detail":{"limit":"10","remaining":"4","resetTime":"2026-07-23T08:15:06Z"}},
+          {"window":{"duration":30,"timeUnit":"TIME_UNIT_MINUTE"}, "detail":{"limit":"10","remaining":"4","resetTime":"2026-07-23T08:15:06Z"}}
+        ]
+        """)
+        let parsed = try XCTUnwrap(KimiUsagesParser.parse(json))
+        let windows = parsed.usage.windows
+        XCTAssertEqual(windows.count, 2)
+        XCTAssertEqual(windows[0].windowDurationMins, 30)
+        XCTAssertNil(windows[1].windowDurationMins)
+    }
 }
 
 final class KimiMembershipLevelFormatterTests: XCTestCase {
