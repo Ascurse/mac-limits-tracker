@@ -128,9 +128,13 @@ enum ClaudeUsageParser {
         return f
     }()
 
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }()
+
     static func parse(_ data: Data) -> ClaudeUsage? {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         guard let json = try? decoder.decode(ClaudeUsageJSON.self, from: data) else { return nil }
         return ClaudeUsage(
             fiveHour: json.fiveHour.map(parseWindow),
