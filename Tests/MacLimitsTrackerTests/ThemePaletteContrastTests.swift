@@ -42,6 +42,33 @@ final class ThemePaletteContrastTests: XCTestCase {
         XCTAssertEqual(WcagContrast.ratio(0x1A1B26, 0x1A1B26), 1, accuracy: 0.001)
     }
 
+    // MARK: - Relative Luminance
+
+    func test_relativeLuminance_pureBlack() {
+        XCTAssertEqual(WcagContrast.relativeLuminance(0x000000), 0.0, accuracy: 0.0001)
+    }
+
+    func test_relativeLuminance_pureWhite() {
+        XCTAssertEqual(WcagContrast.relativeLuminance(0xFFFFFF), 1.0, accuracy: 0.0001)
+    }
+
+    func test_relativeLuminance_primaryColors() {
+        // Red
+        XCTAssertEqual(WcagContrast.relativeLuminance(0xFF0000), 0.2126, accuracy: 0.0001)
+        // Green
+        XCTAssertEqual(WcagContrast.relativeLuminance(0x00FF00), 0.7152, accuracy: 0.0001)
+        // Blue
+        XCTAssertEqual(WcagContrast.relativeLuminance(0x0000FF), 0.0722, accuracy: 0.0001)
+    }
+
+    func test_relativeLuminance_darkColorBranches() {
+        // Linear branch for dark colors (channel <= 0.03928).
+        // 0x08 is 8/255 = ~0.03137, which is < 0.03928.
+        // Luminance should be (8/255) / 12.92 ≈ 0.002428.
+        let expectedLuminance = (8.0 / 255.0) / 12.92
+        XCTAssertEqual(WcagContrast.relativeLuminance(0x080808), expectedLuminance, accuracy: 0.0001)
+    }
+
     // MARK: - Terminal
 
     func test_terminalTextTokens_meetAA() {
