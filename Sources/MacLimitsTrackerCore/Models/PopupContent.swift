@@ -543,26 +543,23 @@ public enum PopupContentBuilder {
     ) -> SparklineContent {
         let currentPercent = max(0, min(100, 100 - currentUsedPercent))
 
-        // Единственное преобразование used → remaining в presentation boundary.
-        var points: [SparklinePoint] = samples.map {
-            SparklinePoint(time: $0.fetchedAt, remainingPercent: 100 - $0.usedPercent)
-        }
+        // ⚡ Bolt: Single-pass iteration to minimize intermediate array
+        // allocations. Sort explicitly to uphold the presentation contract,
+        // as the input might theoretically not be ordered (e.g. from tests).
+        var points: [SparklinePoint] = []
+        let sortedSamples = samples.sorted { $0.fetchedAt < $1.fetchedAt }
 
-        // Контракт: хронологический порядок, независимо от порядка сэмплов на входе.
-        points.sort { $0.time < $1.time }
-
-        // Одинаковые timestamp — оставляем последнее значение, чтобы не было
-        // наложенных точек на линии.
-        points = points.reduce(into: [SparklinePoint]()) { result, point in
-            if let last = result.last, last.time == point.time {
-                result[result.count - 1] = point
-            } else {
-                result.append(point)
+        for sample in sortedSamples {
+            let time = sample.fetchedAt
+            if time >= rangeStart && time <= rangeEnd {
+                let point = SparklinePoint(time: time, remainingPercent: 100 - sample.usedPercent)
+                if let last = points.last, last.time == time {
+                    points[points.count - 1] = point
+                } else {
+                    points.append(point)
+                }
             }
         }
-
-        // Ограничиваем диапазоном тренда.
-        points = points.filter { $0.time >= rangeStart && $0.time <= rangeEnd }
 
         let dataState: TrendDataState
         if points.isEmpty {
