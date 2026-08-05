@@ -53,7 +53,7 @@ struct ClaudeAuthStatus: Equatable {
 /// Чистый парсер stdin `claude auth status --json`.
 enum ClaudeAuthParser {
     static func parse(_ data: Data) -> ClaudeAuthStatus {
-        guard let json = try? JSONDecoder().decode(ClaudeAuthStatusJSON.self, from: data) else {
+        guard let json = try? JSONDecoder.shared.decode(ClaudeAuthStatusJSON.self, from: data) else {
             return ClaudeAuthStatus(loggedIn: false, authMethod: nil, apiProvider: nil,
                                     email: nil, subscriptionType: nil, orgName: nil)
         }
@@ -129,9 +129,7 @@ enum ClaudeUsageParser {
     }()
 
     static func parse(_ data: Data) -> ClaudeUsage? {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard let json = try? decoder.decode(ClaudeUsageJSON.self, from: data) else { return nil }
+        guard let json = try? JSONDecoder.sharedSnakeCase.decode(ClaudeUsageJSON.self, from: data) else { return nil }
         return ClaudeUsage(
             fiveHour: json.fiveHour.map(parseWindow),
             sevenDay: json.sevenDay.map(parseWindow)
@@ -163,7 +161,7 @@ struct ClaudeKeychainCredentialsJSON: Decodable {
 /// Сам токен не логируется и не персистится — только передаётся в HTTP-заголовок.
 enum ClaudeKeychainCredentialsParser {
     static func accessToken(_ data: Data) -> (token: String, expiresAt: Date?)? {
-        guard let json = try? JSONDecoder().decode(ClaudeKeychainCredentialsJSON.self, from: data),
+        guard let json = try? JSONDecoder.shared.decode(ClaudeKeychainCredentialsJSON.self, from: data),
               let oauth = json.claudeAiOauth else { return nil }
         let exp = oauth.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000.0) }
         return (oauth.accessToken, exp)

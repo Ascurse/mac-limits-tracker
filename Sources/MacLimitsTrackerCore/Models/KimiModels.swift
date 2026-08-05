@@ -148,7 +148,7 @@ enum KimiUsagesParser {
     }
 
     static func parse(_ data: Data) -> Parsed? {
-        guard let resp = try? JSONDecoder().decode(KimiUsagesResponseJSON.self, from: data) else {
+        guard let resp = try? JSONDecoder.shared.decode(KimiUsagesResponseJSON.self, from: data) else {
             return nil
         }
         let windows = (resp.limits ?? [])
