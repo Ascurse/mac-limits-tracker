@@ -1,6 +1,8 @@
 import Foundation
 import Security
 
+private let sharedJSONDecoder = JSONDecoder()
+
 /// Источник данных о лимитах Claude Code.
 /// `@unchecked Sendable`: замыкания-зависимости сами по себе не Sendable, но в проде они
 /// (`ProcessRunner.run`, `KeychainStore.readClaudeCodeCredentials`, `Http.httpGet`) без
@@ -52,7 +54,7 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
 
         do {
             let data = try await fileReader(statsCacheURL)
-            stats = try JSONDecoder().decode(StatsCache.self, from: data)
+            stats = try sharedJSONDecoder.decode(StatsCache.self, from: data)
         } catch {
             errors.append("stats cache read failed: \(friendly(error))")
         }
@@ -132,7 +134,7 @@ public struct CodexLimitsProvider: @unchecked Sendable {
         let now = Date()
         do {
             let data = try await fileReader(authFileURL)
-            let file = try JSONDecoder().decode(CodexAuthFileJSON.self, from: data)
+            let file = try sharedJSONDecoder.decode(CodexAuthFileJSON.self, from: data)
             let token = file.tokens?.idToken ?? file.tokens?.accessToken
             let loggedIn = (token != nil) && (file.authMode != nil)
 
@@ -266,7 +268,7 @@ public struct KimiLimitsProvider: @unchecked Sendable {
 
     private func readCredentials() async throws -> KimiCredentialsFile {
         let data = try await fileReader(credentialsURL)
-        return try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+        return try sharedJSONDecoder.decode(KimiCredentialsFile.self, from: data)
     }
 
     private func refreshIfNeeded(_ creds: KimiCredentialsFile, now: Date) async throws -> KimiCredentialsFile {
@@ -342,7 +344,7 @@ extension KimiLimitsProvider {
     /// (см. критерий приёмки bd mac-limits-tracker-6gk.3).
     static func hasUsableCredentials(at url: URL) -> Bool {
         guard let data = try? Data(contentsOf: url),
-              let creds = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+              let creds = try? sharedJSONDecoder.decode(KimiCredentialsFile.self, from: data)
         else { return false }
         return !creds.refreshToken.isEmpty
     }
