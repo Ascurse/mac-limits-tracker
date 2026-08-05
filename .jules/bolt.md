@@ -8,3 +8,7 @@
 ## 2026-08-01 - Uphold explicitly documented sorting contracts in UI presentation functions
 **Learning:** While the underlying data source (`HistoryStore`) guarantees chronological ordering, UI presentation functions (like `trendContent`) that explicitly document a sorting contract must still defensively sort their inputs to uphold that contract. Relying blindly on the data source's guarantee can make the component fragile against theoretically unordered inputs like test data, causing unexpected failures or visual regressions.
 **Action:** When replacing chained array operations with a single-pass `for` loop to eliminate intermediate allocations, always preserve the explicit `.sorted` operation if the component explicitly documents a sorting contract for its input data.
+## 2024-05-14 - Optimize JSONDecoder Allocation in LimitsProviders
+- **Optimization:** Replaced repeated inline `JSONDecoder()` instantiations with a single file-private static instance (`sharedJSONDecoder`).
+- **Rationale:** Instantiating `JSONDecoder` in Swift incurs memory allocation and internal setup overhead. A shared instance avoids this on every periodic limit status fetch, conserving CPU cycles and memory.
+- **Verification:** Verified via `git diff` and manual review. Tests cannot be run due to sandbox constraints (signal 6/11 crashes with Swift compiler).
