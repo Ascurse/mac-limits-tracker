@@ -104,13 +104,14 @@ struct CodexUsageResponseJSON: Decodable {
 
 /// Принимает body JSON-RPC envelope `{"id":N,"result":{...}}`, достаёт `.result.rateLimits`.
 enum CodexUsageParser {
+    private static let decoder = JSONDecoder()
+
     static func parse(_ data: Data) -> CodexUsageSnapshot? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let result = obj["result"] as? [String: Any],
               let resultData = try? JSONSerialization.data(withJSONObject: result) else {
             return nil
         }
-        let decoder = JSONDecoder()
         guard let resp = try? decoder.decode(CodexUsageResponseJSON.self, from: resultData),
               let snapshot = resp.rateLimits else {
             return nil
