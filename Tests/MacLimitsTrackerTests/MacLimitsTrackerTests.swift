@@ -369,6 +369,22 @@ final class ClaudeKeychainCredentialsParserTests: XCTestCase {
     func test_returnsNilOnGarbage() {
         XCTAssertNil(ClaudeKeychainCredentialsParser.accessToken(Data("not-json".utf8)))
     }
+
+    func test_accessToken_validJsonMissingExpiry_returnsTokenAndNilDate() throws {
+        let jsonString = """
+        {
+            "claudeAiOauth": {
+                "accessToken": "sk-ant-api03-test456"
+            }
+        }
+        """
+        let data = try XCTUnwrap(jsonString.data(using: .utf8))
+
+        let result = try XCTUnwrap(ClaudeKeychainCredentialsParser.accessToken(data))
+
+        XCTAssertEqual(result.token, "sk-ant-api03-test456")
+        XCTAssertNil(result.expiresAt)
+    }
 }
 
 final class CodexUsageParserTests: XCTestCase {
