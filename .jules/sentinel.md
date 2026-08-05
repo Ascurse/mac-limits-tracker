@@ -21,3 +21,9 @@
 **Vulnerability:** External API requests made via `URLSession(configuration: .ephemeral)` used default configurations which have a very high timeout (60 seconds for requests, 7 days for resources). This allows malicious or unresponsive external servers to hold connections open indefinitely, potentially exhausting threads and application resources (Denial of Service).
 **Learning:** Network requests interacting with external servers should never use unbounded or overly generous default timeouts, as this represents a vector for resource exhaustion.
 **Prevention:** Always specify explicitly constrained values for `timeoutIntervalForRequest` and `timeoutIntervalForResource` when configuring `URLSession`.
+
+## 2025-05-25 - Prevent subprocess execution vulnerabilities with insecure path validation
+
+**Vulnerability:** `ProcessRunner.run` and `CodexAppServerRpc.fetchRateLimits` checked if a binary path started with `/` using `hasPrefix("/")` to determine if it was absolute and therefore safe. However, this simplistic check allowed for directory traversal (e.g., `/usr/bin/../../malicious/path`) and could match unexpected directories (e.g., `/Users/Shared/MaliciousApp`). This could lead to arbitrary code execution if user input or compromised configuration dictates the binary path.
+**Learning:** Using `hasPrefix("/")` alone is inadequate for path validation because it does not resolve relative segments (`..`). We must standardize the path to remove traversal characters and explicitly reject `..` to prevent arbitrary execution outside the intended absolute path.
+**Prevention:** Always use `URL(fileURLWithPath: path).standardized.path` to resolve paths before validation and explicitly check for and reject the presence of `..` to prevent directory traversal attacks before execution.

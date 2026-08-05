@@ -349,6 +349,23 @@ extension KimiLimitsProvider {
 }
 
 public enum ProcessRunner {
+    /// Проверяет, является ли путь к бинарнику безопасным.
+    public static func isSafeBinaryPath(_ path: String) -> String? {
+        // Must be an absolute path
+        guard path.hasPrefix("/") else { return nil }
+
+        let url = URL(fileURLWithPath: path)
+        let standardPath = url.standardized.path
+
+        // Prevent directory traversal attacks or unexpected resolutions
+        // Even if standardized removes "..", rejecting it upfront is safer
+        if path.contains("..") {
+            return nil
+        }
+
+        return standardPath
+    }
+
     public enum RunError: Swift.Error, LocalizedError {
         case unsafeBinaryPath(String)
         case outputExceededLimit
@@ -364,11 +381,11 @@ public enum ProcessRunner {
     }
 
     public static func run(_ binary: String, _ args: [String]) async throws -> Data {
-        guard binary.hasPrefix("/") else {
+        guard let safeBinary = isSafeBinaryPath(binary) else {
             throw RunError.unsafeBinaryPath(binary)
         }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
+        process.executableURL = URL(fileURLWithPath: safeBinary)
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -461,12 +478,12 @@ public final class CodexAppServerRpc {
         let rateReq = Self.makeEnvelope(method: "account/rateLimits/read", params: [:], id: 2)
         let stdinBytes = (initReq + "\n" + rateReq + "\n").data(using: .utf8) ?? Data()
 
-        guard codexBinary.hasPrefix("/") else {
+        guard let safeCodexBinary = ProcessRunner.isSafeBinaryPath(codexBinary) else {
             throw Error.spawnFailed("unsafe binary path: \(codexBinary) (must be absolute)")
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: codexBinary)
+        process.executableURL = URL(fileURLWithPath: safeCodexBinary)
         process.arguments = ["app-server"]
         let inPipe = Pipe()
         let outPipe = Pipe()
