@@ -15,3 +15,9 @@
 **Vulnerability:** The `ProcessRunner.run` utility read standard output from external processes (like `claude auth status`) directly into memory using `pipe.fileHandleForReading.readToEnd()`. This allows a compromised or malfunctioning external process to exhaust application memory.
 **Learning:** Utilities that execute arbitrary external processes should never read output without bound, even if the processes are considered trusted, to adhere to defense-in-depth principles.
 **Prevention:** Always read external process output in bounded chunks and terminate the process if a safe memory threshold (e.g., 5MB) is exceeded.
+
+## 2024-05-25 - Prevent DoS from hanging external API calls
+
+**Vulnerability:** External API requests made via `URLSession(configuration: .ephemeral)` used default configurations which have a very high timeout (60 seconds for requests, 7 days for resources). This allows malicious or unresponsive external servers to hold connections open indefinitely, potentially exhausting threads and application resources (Denial of Service).
+**Learning:** Network requests interacting with external servers should never use unbounded or overly generous default timeouts, as this represents a vector for resource exhaustion.
+**Prevention:** Always specify explicitly constrained values for `timeoutIntervalForRequest` and `timeoutIntervalForResource` when configuring `URLSession`.
