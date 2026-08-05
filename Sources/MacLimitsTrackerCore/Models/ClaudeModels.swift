@@ -172,11 +172,23 @@ enum ClaudeKeychainCredentialsParser {
 
 /// Чистый выбор «сегодня» из кеша статистики, считает сумму токенов по моделям.
 enum StatsCacheUsage {
-    /// Claude Code пишет даты кеша статистики в America/Los_Angeles — сводим «сегодня» к тому же таймзону.
-    static func laFormatter(calendar: Calendar = .current) -> DateFormatter {
+    private static let defaultLAFormatter: DateFormatter? = {
+        guard let tz = TimeZone(identifier: "America/Los_Angeles") else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "America/Los_Angeles") ?? calendar.timeZone
+        formatter.timeZone = tz
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    /// Claude Code пишет даты кеша статистики в America/Los_Angeles — сводим «сегодня» к тому же таймзону.
+    static func laFormatter(calendar: Calendar = .current) -> DateFormatter {
+        if let formatter = defaultLAFormatter {
+            return formatter
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }

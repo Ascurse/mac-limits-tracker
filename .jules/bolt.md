@@ -8,3 +8,7 @@
 ## 2026-08-01 - Uphold explicitly documented sorting contracts in UI presentation functions
 **Learning:** While the underlying data source (`HistoryStore`) guarantees chronological ordering, UI presentation functions (like `trendContent`) that explicitly document a sorting contract must still defensively sort their inputs to uphold that contract. Relying blindly on the data source's guarantee can make the component fragile against theoretically unordered inputs like test data, causing unexpected failures or visual regressions.
 **Action:** When replacing chained array operations with a single-pass `for` loop to eliminate intermediate allocations, always preserve the explicit `.sorted` operation if the component explicitly documents a sorting contract for its input data.
+## 2024-05-14 - Optimize DateFormatter Allocation
+
+**Learning:** `DateFormatter` initialization (which involves locale setup, timezone resolution, and caching of internal ICU formatters) is computationally expensive. Repeatedly creating new `DateFormatter` instances in methods that are called frequently (such as parsing dates from a stats cache) can be a significant performance bottleneck.
+**Optimization:** By using a `static let` to cache the `DateFormatter` configured for the required timezone (e.g., `America/Los_Angeles`), we eliminate the allocation overhead, reducing it to a simple pointer dereference (nanoseconds). `DateFormatter` is thread-safe for reading/formatting on macOS 10.9+, making it perfectly suitable for shared static usage.
