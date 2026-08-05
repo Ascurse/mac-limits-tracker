@@ -67,6 +67,29 @@ final class StatsCacheUsageTests: XCTestCase {
                                                calendar: .current)
         XCTAssertNil(usage)
     }
+
+    func test_latestUsageReturnsLastDayInActivity() {
+        let cache = makeCache(todayKey: "2026-04-25")
+        let usage = StatsCacheUsage.latestUsage(from: cache)
+        XCTAssertEqual(usage?.date, "2026-04-25")
+        XCTAssertEqual(usage?.messageCount, 325)
+        XCTAssertEqual(usage?.sessionCount, 1)
+        XCTAssertEqual(usage?.toolCallCount, 92)
+        XCTAssertEqual(usage?.tokens, 1200)
+    }
+
+    func test_latestUsageReturnsNilWhenNoActivity() {
+        let cache = StatsCache(
+            version: 4,
+            lastComputedDate: nil,
+            dailyActivity: [],
+            dailyModelTokens: [],
+            totalSessions: 0,
+            totalMessages: 0
+        )
+        let usage = StatsCacheUsage.latestUsage(from: cache)
+        XCTAssertNil(usage)
+    }
 }
 
 final class CodexClaimsParserTests: XCTestCase {
