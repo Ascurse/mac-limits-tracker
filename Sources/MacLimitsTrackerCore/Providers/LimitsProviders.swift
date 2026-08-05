@@ -128,52 +128,77 @@ public struct CodexLimitsProvider: @unchecked Sendable {
         }
     }
 
-    func fetchStatus() async -> CodexStatus {
-        let now = Date()
-        do {
-            let data = try await fileReader(authFileURL)
-            let file = try JSONDecoder().decode(CodexAuthFileJSON.self, from: data)
-            let token = file.tokens?.idToken ?? file.tokens?.accessToken
-            let loggedIn = (token != nil) && (file.authMode != nil)
+    private func readAuthFile() async throws -> CodexAuthFileJSON {
+        let data = try await fileReader(authFileURL)
+        return try JSONDecoder().decode(CodexAuthFileJSON.self, from: data)
+    }
 
-            let (usage, usageError) = await fetchUsage()
-            let claims = token.map(CodexClaimsParser.parse)
-            if token != nil {
-                return CodexStatus(
-                    loggedIn: loggedIn,
-                    authMode: file.authMode,
-                    email: claims?.email,
-                    planType: claims?.planType,
-                    subscriptionActiveUntil: claims?.subscriptionActiveUntil,
-                    daysUntilRenewal: claims.flatMap { CodexClaimsParser.daysUntilRenewal(from: $0) },
-                    accountOwner: claims?.accountOwner,
-                    usage: usage,
-                    usageError: usageError,
-                    fetchedAt: now,
-                    providerError: nil
-                )
-            }
+    private func buildStatus(
+        file: CodexAuthFileJSON,
+        token: String?,
+        usage: CodexUsage?,
+        usageError: String?,
+        now: Date
+    ) -> CodexStatus {
+        let loggedIn = (token != nil) && (file.authMode != nil)
+        let claims = token.map(CodexClaimsParser.parse)
+
+        if token != nil {
             return CodexStatus(
                 loggedIn: loggedIn,
                 authMode: file.authMode,
-                email: nil, planType: nil,
-                subscriptionActiveUntil: nil, daysUntilRenewal: nil,
-                accountOwner: nil,
+                email: claims?.email,
+                planType: claims?.planType,
+                subscriptionActiveUntil: claims?.subscriptionActiveUntil,
+                daysUntilRenewal: claims.flatMap { CodexClaimsParser.daysUntilRenewal(from: $0) },
+                accountOwner: claims?.accountOwner,
                 usage: usage,
                 usageError: usageError,
                 fetchedAt: now,
-                providerError: "auth.json has no ChatGPT tokens"
+                providerError: nil
+            )
+        }
+        return CodexStatus(
+            loggedIn: loggedIn,
+            authMode: file.authMode,
+            email: nil, planType: nil,
+            subscriptionActiveUntil: nil, daysUntilRenewal: nil,
+            accountOwner: nil,
+            usage: usage,
+            usageError: usageError,
+            fetchedAt: now,
+            providerError: "auth.json has no ChatGPT tokens"
+        )
+    }
+
+    private func buildErrorStatus(error: Error, now: Date) -> CodexStatus {
+        return CodexStatus(
+            loggedIn: false, authMode: nil,
+            email: nil, planType: nil,
+            subscriptionActiveUntil: nil, daysUntilRenewal: nil,
+            accountOwner: nil,
+            usage: nil, usageError: nil,
+            fetchedAt: now,
+            providerError: "auth.json read failed: \(friendly(error))"
+        )
+    }
+
+    func fetchStatus() async -> CodexStatus {
+        let now = Date()
+        do {
+            let file = try await readAuthFile()
+            let token = file.tokens?.idToken ?? file.tokens?.accessToken
+            let (usage, usageError) = await fetchUsage()
+
+            return buildStatus(
+                file: file,
+                token: token,
+                usage: usage,
+                usageError: usageError,
+                now: now
             )
         } catch {
-            return CodexStatus(
-                loggedIn: false, authMode: nil,
-                email: nil, planType: nil,
-                subscriptionActiveUntil: nil, daysUntilRenewal: nil,
-                accountOwner: nil,
-                usage: nil, usageError: nil,
-                fetchedAt: now,
-                providerError: "auth.json read failed: \(friendly(error))"
-            )
+            return buildErrorStatus(error: error, now: now)
         }
     }
 
