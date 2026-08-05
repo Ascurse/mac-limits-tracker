@@ -356,15 +356,27 @@ public enum ProcessRunner {
         public var errorDescription: String? {
             switch self {
             case .unsafeBinaryPath(let path):
-                return "unsafe binary path: \(path) (must be absolute)"
+                return "unsafe binary path: \(path) (must be in a safe directory)"
             case .outputExceededLimit:
                 return "process output exceeded safe buffer limit"
             }
         }
     }
 
+    internal static func isSafeBinaryPath(_ path: String) -> Bool {
+        guard path.hasPrefix("/") else { return false }
+        let standardized = URL(fileURLWithPath: path).standardized.path
+        let safePrefixes = [
+            "/usr/bin/",
+            "/usr/local/bin/",
+            "/opt/homebrew/bin/",
+            "\(NSHomeDirectory())/.local/bin/"
+        ]
+        return safePrefixes.contains { standardized.hasPrefix($0) }
+    }
+
     public static func run(_ binary: String, _ args: [String]) async throws -> Data {
-        guard binary.hasPrefix("/") else {
+        guard isSafeBinaryPath(binary) else {
             throw RunError.unsafeBinaryPath(binary)
         }
         let process = Process()
@@ -461,8 +473,8 @@ public final class CodexAppServerRpc {
         let rateReq = Self.makeEnvelope(method: "account/rateLimits/read", params: [:], id: 2)
         let stdinBytes = (initReq + "\n" + rateReq + "\n").data(using: .utf8) ?? Data()
 
-        guard codexBinary.hasPrefix("/") else {
-            throw Error.spawnFailed("unsafe binary path: \(codexBinary) (must be absolute)")
+        guard ProcessRunner.isSafeBinaryPath(codexBinary) else {
+            throw Error.spawnFailed("unsafe binary path: \(codexBinary) (must be in a safe directory)")
         }
 
         let process = Process()
