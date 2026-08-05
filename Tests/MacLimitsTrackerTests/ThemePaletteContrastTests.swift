@@ -38,8 +38,24 @@ final class ThemePaletteContrastTests: XCTestCase {
         XCTAssertEqual(WcagContrast.ratio(0x000000, 0xFFFFFF), 21, accuracy: 0.01)
     }
 
+    func test_ratio_whiteOnBlack_is21() {
+        XCTAssertEqual(WcagContrast.ratio(0xFFFFFF, 0x000000), 21, accuracy: 0.01)
+    }
+
     func test_ratio_identicalColors_is1() {
         XCTAssertEqual(WcagContrast.ratio(0x1A1B26, 0x1A1B26), 1, accuracy: 0.001)
+    }
+
+    func test_ratio_isSymmetric() {
+        let a = WcagContrast.ratio(0x5C6497, 0x1A1B26)
+        let b = WcagContrast.ratio(0x1A1B26, 0x5C6497)
+        XCTAssertEqual(a, b, accuracy: 0.0001)
+    }
+
+    func test_ratio_knownValues() {
+        XCTAssertEqual(WcagContrast.ratio(0x5C6497, 0x1A1B26), 3.03, accuracy: 0.01)
+        XCTAssertEqual(WcagContrast.ratio(0x101216, 0xD0D5DD), 12.71, accuracy: 0.01)
+        XCTAssertEqual(WcagContrast.ratio(0x1A1B26, 0xC0CAF5), 10.58, accuracy: 0.01)
     }
 
     // MARK: - Terminal
