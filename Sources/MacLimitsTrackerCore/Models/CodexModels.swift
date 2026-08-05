@@ -173,6 +173,7 @@ struct ChatGPTClaims: Equatable {
 /// Разбирает payload claims с учётом поля `https://api.openai.com/auth` (вложенный объект).
 enum CodexClaimsParser {
     static let authClaimKey = "https://api.openai.com/auth"
+    private static let dateFormatter = ISO8601DateFormatter()
 
     static func parse(_ token: String) -> ChatGPTClaims {
         guard let payload = ChatGPTClaims.payload(of: token) else {
@@ -197,7 +198,7 @@ enum CodexClaimsParser {
             let raw = (auth?["chatgpt_subscription_active_until"] as? String)
                 ?? (payload["chatgpt_subscription_active_until"] as? String)
             guard let raw else { return nil }
-            return ISO8601DateFormatter().date(from: raw)
+            return dateFormatter.date(from: raw)
         }()
         return ChatGPTClaims(email: email, planType: plan,
                              subscriptionActiveUntil: until, accountOwner: owner)
