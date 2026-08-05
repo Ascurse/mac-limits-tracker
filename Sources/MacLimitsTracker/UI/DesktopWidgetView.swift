@@ -32,6 +32,7 @@ struct DesktopWidgetView: View {
         HStack(spacing: 6) {
             Image(systemName: "gauge.with.dots.needle.bottom.50percent")
                 .font(.subheadline)
+                .accessibilityHidden(true)
             Text("Limits Tracker")
                 .font(.subheadline.weight(.semibold))
             Spacer()
