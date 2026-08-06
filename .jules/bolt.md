@@ -8,3 +8,7 @@
 ## 2026-08-01 - Uphold explicitly documented sorting contracts in UI presentation functions
 **Learning:** While the underlying data source (`HistoryStore`) guarantees chronological ordering, UI presentation functions (like `trendContent`) that explicitly document a sorting contract must still defensively sort their inputs to uphold that contract. Relying blindly on the data source's guarantee can make the component fragile against theoretically unordered inputs like test data, causing unexpected failures or visual regressions.
 **Action:** When replacing chained array operations with a single-pass `for` loop to eliminate intermediate allocations, always preserve the explicit `.sorted` operation if the component explicitly documents a sorting contract for its input data.
+
+## 2024-05-25 - Avoid repeated JSONDecoder instantiation
+**Learning:** Instantiating `JSONDecoder()` or `ISO8601DateFormatter()` on every network response or parsing tick is an unnecessary performance overhead, as it triggers internal memory allocations and state setups. Both `JSONDecoder` and `ISO8601DateFormatter` are thread-safe for reuse.
+**Action:** Always create a `static let sharedDecoder = JSONDecoder()` and reuse it across the type where appropriate to avoid O(N) allocation overhead for frequent parsing operations.

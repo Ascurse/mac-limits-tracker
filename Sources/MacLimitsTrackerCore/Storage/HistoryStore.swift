@@ -9,6 +9,8 @@ private struct HistoryFile: Codable {
 /// идущих одинаковых точек уменьшает объём файла и убирает плато на
 /// sparkline; прунинг старше 7 дней ограничивает рост истории.
 public final class HistoryStore {
+    private static let sharedDecoder = JSONDecoder()
+    private static let sharedEncoder = JSONEncoder()
     private static let fileName = "history.json"
     private static let currentVersion = 1
     private static let retentionDays: TimeInterval = 7
@@ -120,7 +122,7 @@ public final class HistoryStore {
             )
 
             let file = HistoryFile(version: Self.currentVersion, samples: samples)
-            let data = try JSONEncoder().encode(file)
+            let data = try Self.sharedEncoder.encode(file)
 
             let tmpURL = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
             let created = FileManager.default.createFile(
@@ -137,7 +139,7 @@ public final class HistoryStore {
 
     private static func load(from fileURL: URL) -> [UsageSample] {
         guard let data = try? Data(contentsOf: fileURL),
-              let file = try? JSONDecoder().decode(HistoryFile.self, from: data),
+              let file = try? Self.sharedDecoder.decode(HistoryFile.self, from: data),
               file.version == currentVersion
         else { return [] }
         return file.samples

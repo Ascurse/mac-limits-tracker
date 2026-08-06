@@ -3,6 +3,7 @@ import Foundation
 /// Обновляет Kimi access_token через `POST auth.kimi.com/api/oauth/token`,
 /// атомарно перезаписывая `~/.kimi-code/credentials/kimi-code.json`.
 struct KimiTokenRefresher {
+    private static let sharedDecoder = JSONDecoder()
     static let tokenURL = URL(string: "https://auth.kimi.com/api/oauth/token")!
     static let clientID = "17e5f671-d194-4dfb-9706-5516cb48c098"
     static let defaultDeviceIDURL = FileManager.default
@@ -62,7 +63,7 @@ struct KimiTokenRefresher {
         case 200:
             let response: KimiOAuthTokenResponse
             do {
-                response = try JSONDecoder().decode(
+                response = try Self.sharedDecoder.decode(
                     KimiOAuthTokenResponse.self, from: body
                 )
             } catch {
@@ -104,7 +105,7 @@ struct KimiTokenRefresher {
         old: KimiCredentialsFile, credentialsURL: URL
     ) async throws -> KimiCredentialsFile? {
         guard let data = try? await fileReader(credentialsURL),
-              let file = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data),
+              let file = try? Self.sharedDecoder.decode(KimiCredentialsFile.self, from: data),
               !file.refreshToken.isEmpty,
               file.accessToken != old.accessToken,
               let expiresAt = file.expiresAt,

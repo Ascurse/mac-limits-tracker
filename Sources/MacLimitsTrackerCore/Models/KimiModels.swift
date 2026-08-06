@@ -142,13 +142,14 @@ enum KimiMembershipLevelFormatter {
 /// Парсит `/coding/v1/usages` в `KimiUsage` + сырой `membership.level` (форматирование
 /// плана — забота вызывающей стороны, тут только извлечение данных).
 enum KimiUsagesParser {
+    private static let sharedDecoder = JSONDecoder()
     struct Parsed: Equatable {
         let usage: KimiUsage
         let membershipLevel: String?
     }
 
     static func parse(_ data: Data) -> Parsed? {
-        guard let resp = try? JSONDecoder().decode(KimiUsagesResponseJSON.self, from: data) else {
+        guard let resp = try? sharedDecoder.decode(KimiUsagesResponseJSON.self, from: data) else {
             return nil
         }
         let windows = (resp.limits ?? [])

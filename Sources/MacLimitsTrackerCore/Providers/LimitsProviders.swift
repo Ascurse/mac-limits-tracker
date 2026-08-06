@@ -8,6 +8,7 @@ import Security
 /// пишут в захваченные `var`, полагаются на то, что тест не гоняет `fetch()` параллельно с
 /// самим собой — если такое понадобится, нужен другой примитив, не просто эта аннотация.
 public struct ClaudeLimitsProvider: @unchecked Sendable {
+    private static let sharedDecoder = JSONDecoder()
     let claudeBinary: String
     let statsCacheURL: URL
     let processRunner: (String, [String]) async throws -> Data
@@ -52,7 +53,7 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
 
         do {
             let data = try await fileReader(statsCacheURL)
-            stats = try JSONDecoder().decode(StatsCache.self, from: data)
+            stats = try Self.sharedDecoder.decode(StatsCache.self, from: data)
         } catch {
             errors.append("stats cache read failed: \(friendly(error))")
         }
@@ -105,6 +106,7 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
 /// Источник данных о лимитах Codex.
 /// `@unchecked Sendable`: см. комментарий у `ClaudeLimitsProvider`.
 public struct CodexLimitsProvider: @unchecked Sendable {
+    private static let sharedDecoder = JSONDecoder()
     let authFileURL: URL
     let fileReader: (URL) async throws -> Data
     /// Выполняет init + `account/rateLimits/read` через `codex app-server`, возвращает
@@ -132,7 +134,7 @@ public struct CodexLimitsProvider: @unchecked Sendable {
         let now = Date()
         do {
             let data = try await fileReader(authFileURL)
-            let file = try JSONDecoder().decode(CodexAuthFileJSON.self, from: data)
+            let file = try Self.sharedDecoder.decode(CodexAuthFileJSON.self, from: data)
             let token = file.tokens?.idToken ?? file.tokens?.accessToken
             let loggedIn = (token != nil) && (file.authMode != nil)
 
@@ -198,6 +200,7 @@ public struct CodexLimitsProvider: @unchecked Sendable {
 /// credentials-файлу (непустой `refresh_token`), usage — по live-запросу к
 /// `GET /coding/v1/usages` (см. bd mac-limits-tracker-6gk.8).
 public struct KimiLimitsProvider: @unchecked Sendable {
+    private static let sharedDecoder = JSONDecoder()
     /// Дефолтный путь credentials-файла; вынесен в статику, чтобы `ProviderRegistry`
     /// мог использовать то же значение по умолчанию без дублирования. Должен быть
     /// `public` — Swift требует видимость default-параметра не ниже видимости функции,
@@ -266,7 +269,7 @@ public struct KimiLimitsProvider: @unchecked Sendable {
 
     private func readCredentials() async throws -> KimiCredentialsFile {
         let data = try await fileReader(credentialsURL)
-        return try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+        return try Self.sharedDecoder.decode(KimiCredentialsFile.self, from: data)
     }
 
     private func refreshIfNeeded(_ creds: KimiCredentialsFile, now: Date) async throws -> KimiCredentialsFile {
@@ -342,7 +345,7 @@ extension KimiLimitsProvider {
     /// (см. критерий приёмки bd mac-limits-tracker-6gk.3).
     static func hasUsableCredentials(at url: URL) -> Bool {
         guard let data = try? Data(contentsOf: url),
-              let creds = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+              let creds = try? Self.sharedDecoder.decode(KimiCredentialsFile.self, from: data)
         else { return false }
         return !creds.refreshToken.isEmpty
     }
