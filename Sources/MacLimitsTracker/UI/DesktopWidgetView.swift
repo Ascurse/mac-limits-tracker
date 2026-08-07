@@ -97,50 +97,71 @@ struct DesktopWidgetView: View {
         let resolved = SnapshotResolver.resolve(state)
         let recovery = recoveryContent(for: state)
         let items = windows(for: resolved.snapshot, thresholds: viewModel.severityThresholds)
+
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Circle().fill(color).frame(width: 7, height: 7)
-                Text(state.descriptor.shortName)
-                    .font(.caption.weight(.semibold))
-                Spacer()
-            }
-            // Stale-проверка раньше error: у stale-состояния ошибка тоже есть,
-            // но бары рисуем из last-good.
-            if resolved.isStale {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, window in
-                    windowRow(window, color: color)
-                }
-                .opacity(StaleAppearance.opacity)
-                if let recovery {
-                    Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                        .help(recovery.diagnostic)
-                        .opacity(StaleAppearance.opacity)
-                }
-            } else if let recovery {
-                Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
-                    .help(recovery.diagnostic)
-            } else if state.snapshot == nil {
-                Text("Loading…")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else if items.isEmpty {
-                Text("Usage unavailable")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else {
-                // id по offset, а не по label: у двух окон может совпасть длительность
-                // (например два «5h»), и коллизия по label схлопнет строки.
-                ForEach(Array(items.enumerated()), id: \.offset) { _, window in
-                    windowRow(window, color: color)
-                }
-            }
+            providerHeader(name: state.descriptor.shortName, color: color)
+            providerContent(state: state, resolved: resolved, recovery: recovery, items: items, color: color)
         }
+    }
+
+    @ViewBuilder
+    private func providerHeader(name: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(name)
+                .font(.caption.weight(.semibold))
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func providerContent(
+        state: ProviderState,
+        resolved: ResolvedDisplay,
+        recovery: ProviderRecoveryContent?,
+        items: [LimitWindow],
+        color: Color
+    ) -> some View {
+        // Stale-проверка раньше error: у stale-состояния ошибка тоже есть,
+        // но бары рисуем из last-good.
+        if resolved.isStale {
+            windowList(items: items, color: color)
+                .opacity(StaleAppearance.opacity)
+            if let recovery {
+                recoveryView(recovery)
+                    .opacity(StaleAppearance.opacity)
+            }
+        } else if let recovery {
+            recoveryView(recovery)
+        } else if state.snapshot == nil {
+            Text("Loading…")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else if items.isEmpty {
+            Text("Usage unavailable")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else {
+            windowList(items: items, color: color)
+        }
+    }
+
+    @ViewBuilder
+    private func windowList(items: [LimitWindow], color: Color) -> some View {
+        // id по offset, а не по label: у двух окон может совпасть длительность
+        // (например два «5h»), и коллизия по label схлопнет строки.
+        ForEach(Array(items.enumerated()), id: \.offset) { _, window in
+            windowRow(window, color: color)
+        }
+    }
+
+    @ViewBuilder
+    private func recoveryView(_ recovery: ProviderRecoveryContent) -> some View {
+        Label(recovery.primaryText, systemImage: "exclamationmark.triangle")
+            .font(.caption2)
+            .foregroundStyle(.red)
+            .lineLimit(2)
+            .help(recovery.diagnostic)
     }
 
     private func windowRow(_ window: LimitWindow, color: Color) -> some View {
