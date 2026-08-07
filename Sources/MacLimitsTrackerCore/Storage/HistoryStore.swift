@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 private struct HistoryFile: Codable {
     let version: Int
@@ -12,6 +13,7 @@ public final class HistoryStore {
     private static let fileName = "history.json"
     private static let currentVersion = 1
     private static let retentionDays: TimeInterval = 7
+    private static let logger = Logger(subsystem: "dev.ascurse.MacLimitsTracker", category: "HistoryStore")
 
     private let directory: URL
     private let fileURL: URL
@@ -118,28 +120,67 @@ public final class HistoryStore {
                 at: directory,
                 withIntermediateDirectories: true
             )
-
-            let file = HistoryFile(version: Self.currentVersion, samples: samples)
-            let data = try JSONEncoder().encode(file)
-
-            let tmpURL = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
-            let created = FileManager.default.createFile(
-                atPath: tmpURL.path,
-                contents: data,
-                attributes: [.posixPermissions: 0o600]
-            )
-            guard created else { return }
-            _ = try? FileManager.default.replaceItemAt(fileURL, withItemAt: tmpURL)
         } catch {
-            // Молча игнорируем ошибки записи: следующий append попробует снова.
+            Self.logger.error("Не удалось создать каталог истории: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        let data: Data
+        do {
+            let file = HistoryFile(version: Self.currentVersion, samples: samples)
+            data = try JSONEncoder().encode(file)
+        } catch {
+            Self.logger.error("Не удалось закодировать историю в JSON: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        let tmpURL = directory.appendingPathComponent(".\(UUID().uuidString).tmp")
+        let created = FileManager.default.createFile(
+            atPath: tmpURL.path,
+            contents: data,
+            attributes: [.posixPermissions: 0o600]
+        )
+        guard created else {
+            Self.logger.error("Не удалось создать временный файл истории по пути \(tmpURL.path, privacy: .public)")
+            return
+        }
+
+        do {
+            try FileManager.default.replaceItemAt(fileURL, withItemAt: tmpURL)
+        } catch {
+            Self.logger.error("Не удалось заменить файл истории: \(error.localizedDescription, privacy: .public)")
+            try? FileManager.default.removeItem(at: tmpURL)
         }
     }
 
     private static func load(from fileURL: URL) -> [UsageSample] {
-        guard let data = try? Data(contentsOf: fileURL),
-              let file = try? JSONDecoder.shared.decode(HistoryFile.self, from: data),
-              file.version == currentVersion
-        else { return [] }
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch let error as NSError
+            where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            // Обычный случай первого запуска: файла истории ещё нет.
+            return []
+        } catch {
+            logger.error("Не удалось прочитать файл истории: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+
+        let file: HistoryFile
+        do {
+            file = try JSONDecoder.shared.decode(HistoryFile.self, from: data)
+        } catch {
+            logger.error("Не удалось разобрать JSON файла истории: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+
+        guard file.version == currentVersion else {
+            logger.error(
+                "Версия файла истории не совпадает: ожидалась \(currentVersion, privacy: .public), получена \(file.version, privacy: .public)"
+            )
+            return []
+        }
+
         return file.samples
     }
 }
