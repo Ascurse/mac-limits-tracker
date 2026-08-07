@@ -367,8 +367,11 @@ public enum ProcessRunner {
         guard binary.hasPrefix("/") else {
             throw RunError.unsafeBinaryPath(binary)
         }
+        guard !binary.contains("..") else {
+            throw RunError.unsafeBinaryPath(binary)
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
+        process.executableURL = URL(fileURLWithPath: binary).standardized
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -464,9 +467,12 @@ public final class CodexAppServerRpc {
         guard codexBinary.hasPrefix("/") else {
             throw Error.spawnFailed("unsafe binary path: \(codexBinary) (must be absolute)")
         }
+        guard !codexBinary.contains("..") else {
+            throw Error.spawnFailed("unsafe binary path: \(codexBinary) (directory traversal not allowed)")
+        }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: codexBinary)
+        process.executableURL = URL(fileURLWithPath: codexBinary).standardized
         process.arguments = ["app-server"]
         let inPipe = Pipe()
         let outPipe = Pipe()
