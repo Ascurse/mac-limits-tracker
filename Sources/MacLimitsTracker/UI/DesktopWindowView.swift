@@ -58,6 +58,7 @@ struct DesktopWindowView: View {
         HStack(spacing: 8) {
             Image(systemName: "gauge.with.dots.needle.bottom.50percent")
                 .font(.title2)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Limits Tracker")
                     .font(.headline)
