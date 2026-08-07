@@ -67,6 +67,29 @@ final class StatsCacheUsageTests: XCTestCase {
                                                calendar: .current)
         XCTAssertNil(usage)
     }
+
+    func test_latestUsageReturnsLastDayInActivity() {
+        let cache = makeCache(todayKey: "2026-04-25")
+        let usage = StatsCacheUsage.latestUsage(from: cache)
+        XCTAssertEqual(usage?.date, "2026-04-25")
+        XCTAssertEqual(usage?.messageCount, 325)
+        XCTAssertEqual(usage?.sessionCount, 1)
+        XCTAssertEqual(usage?.toolCallCount, 92)
+        XCTAssertEqual(usage?.tokens, 1200)
+    }
+
+    func test_latestUsageReturnsNilWhenNoActivity() {
+        let cache = StatsCache(
+            version: 4,
+            lastComputedDate: nil,
+            dailyActivity: [],
+            dailyModelTokens: [],
+            totalSessions: 0,
+            totalMessages: 0
+        )
+        let usage = StatsCacheUsage.latestUsage(from: cache)
+        XCTAssertNil(usage)
+    }
 }
 
 final class CodexClaimsParserTests: XCTestCase {
@@ -368,6 +391,22 @@ final class ClaudeKeychainCredentialsParserTests: XCTestCase {
 
     func test_returnsNilOnGarbage() {
         XCTAssertNil(ClaudeKeychainCredentialsParser.accessToken(Data("not-json".utf8)))
+    }
+
+    func test_accessToken_validJsonMissingExpiry_returnsTokenAndNilDate() throws {
+        let jsonString = """
+        {
+            "claudeAiOauth": {
+                "accessToken": "sk-ant-api03-test456"
+            }
+        }
+        """
+        let data = try XCTUnwrap(jsonString.data(using: .utf8))
+
+        let result = try XCTUnwrap(ClaudeKeychainCredentialsParser.accessToken(data))
+
+        XCTAssertEqual(result.token, "sk-ant-api03-test456")
+        XCTAssertNil(result.expiresAt)
     }
 }
 

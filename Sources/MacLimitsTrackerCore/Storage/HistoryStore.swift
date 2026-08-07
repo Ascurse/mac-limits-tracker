@@ -137,7 +137,7 @@ public final class HistoryStore {
 
     private static func load(from fileURL: URL) -> [UsageSample] {
         guard let data = try? Data(contentsOf: fileURL),
-              let file = try? JSONDecoder().decode(HistoryFile.self, from: data),
+              let file = try? JSONDecoder.shared.decode(HistoryFile.self, from: data),
               file.version == currentVersion
         else { return [] }
         return file.samples

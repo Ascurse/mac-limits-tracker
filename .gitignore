@@ -27,3 +27,6 @@
 
 # Кэш моделей fastembed (ygrep) — ~100 МБ бинарников, качается заново
 .fastembed_cache/
+
+# Личные настройки codex CLI (модель, reasoning effort) — не общая конфигурация
+.codex/config.toml

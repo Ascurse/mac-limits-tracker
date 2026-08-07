@@ -52,7 +52,7 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
 
         do {
             let data = try await fileReader(statsCacheURL)
-            stats = try JSONDecoder().decode(StatsCache.self, from: data)
+            stats = try JSONDecoder.shared.decode(StatsCache.self, from: data)
         } catch {
             errors.append("stats cache read failed: \(friendly(error))")
         }
@@ -130,7 +130,7 @@ public struct CodexLimitsProvider: @unchecked Sendable {
 
     private func readAuthFile() async throws -> CodexAuthFileJSON {
         let data = try await fileReader(authFileURL)
-        return try JSONDecoder().decode(CodexAuthFileJSON.self, from: data)
+        return try JSONDecoder.shared.decode(CodexAuthFileJSON.self, from: data)
     }
 
     private func buildStatus(
@@ -291,7 +291,7 @@ public struct KimiLimitsProvider: @unchecked Sendable {
 
     private func readCredentials() async throws -> KimiCredentialsFile {
         let data = try await fileReader(credentialsURL)
-        return try JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+        return try JSONDecoder.shared.decode(KimiCredentialsFile.self, from: data)
     }
 
     private func refreshIfNeeded(_ creds: KimiCredentialsFile, now: Date) async throws -> KimiCredentialsFile {
@@ -367,7 +367,7 @@ extension KimiLimitsProvider {
     /// (см. критерий приёмки bd mac-limits-tracker-6gk.3).
     static func hasUsableCredentials(at url: URL) -> Bool {
         guard let data = try? Data(contentsOf: url),
-              let creds = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data)
+              let creds = try? JSONDecoder.shared.decode(KimiCredentialsFile.self, from: data)
         else { return false }
         return !creds.refreshToken.isEmpty
     }
@@ -392,8 +392,11 @@ public enum ProcessRunner {
         guard binary.hasPrefix("/") else {
             throw RunError.unsafeBinaryPath(binary)
         }
+        guard !binary.contains("..") else {
+            throw RunError.unsafeBinaryPath(binary)
+        }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
+        process.executableURL = URL(fileURLWithPath: binary).standardized
         process.arguments = args
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -489,9 +492,12 @@ public final class CodexAppServerRpc {
         guard codexBinary.hasPrefix("/") else {
             throw Error.spawnFailed("unsafe binary path: \(codexBinary) (must be absolute)")
         }
+        guard !codexBinary.contains("..") else {
+            throw Error.spawnFailed("unsafe binary path: \(codexBinary) (directory traversal not allowed)")
+        }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: codexBinary)
+        process.executableURL = URL(fileURLWithPath: codexBinary).standardized
         process.arguments = ["app-server"]
         let inPipe = Pipe()
         let outPipe = Pipe()

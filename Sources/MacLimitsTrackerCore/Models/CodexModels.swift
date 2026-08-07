@@ -110,8 +110,7 @@ enum CodexUsageParser {
               let resultData = try? JSONSerialization.data(withJSONObject: result) else {
             return nil
         }
-        let decoder = JSONDecoder()
-        guard let resp = try? decoder.decode(CodexUsageResponseJSON.self, from: resultData),
+        guard let resp = try? JSONDecoder.shared.decode(CodexUsageResponseJSON.self, from: resultData),
               let snapshot = resp.rateLimits else {
             return nil
         }
@@ -172,6 +171,7 @@ struct ChatGPTClaims: Equatable {
 
 /// Разбирает payload claims с учётом поля `https://api.openai.com/auth` (вложенный объект).
 enum CodexClaimsParser {
+    private static let iso8601Plain = ISO8601DateFormatter()
     static let authClaimKey = "https://api.openai.com/auth"
 
     static func parse(_ token: String) -> ChatGPTClaims {
@@ -197,7 +197,7 @@ enum CodexClaimsParser {
             let raw = (auth?["chatgpt_subscription_active_until"] as? String)
                 ?? (payload["chatgpt_subscription_active_until"] as? String)
             guard let raw else { return nil }
-            return ISO8601DateFormatter().date(from: raw)
+            return iso8601Plain.date(from: raw)
         }()
         return ChatGPTClaims(email: email, planType: plan,
                              subscriptionActiveUntil: until, accountOwner: owner)
