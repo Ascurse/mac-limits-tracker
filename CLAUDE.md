@@ -133,6 +133,17 @@ Swift Package с тремя таргетами:
   их в `Color`. Новый цвет заводится в Core, иначе его не увидит гейт контраста
   `ThemePaletteContrastTests` (WCAG AA: 4.5:1 для текста, 3:1 для полос, рамок и
   stale-состояния при `StaleAppearance.opacity`).
+- Показ 7-дневных графиков тренда — один глобальный флаг `showUsageTrends`
+  (`AppSettingsStore`, `LimitsViewModel.setShowUsageTrends`), не per-тема и не
+  per-поверхность (bd mac-limits-tracker-gld.4). Гейтинг — в
+  `PopupContentBuilder.windowRows` (параметр `showTrends`): при выключенном
+  флаге `.sparkline`-строка заменяется компактной `.note` («7d: X% → Y%» для
+  `.ok`, тот же `fallbackText`, что и у маркеров графика, для sparse/gap/stale);
+  `.empty` по-прежнему не рендерит ничего («не шумим»). `.window`-строка
+  (remaining/reset) от этого флага не зависит. Темы (`UI/*StatusView.swift`) и
+  `ProviderOverview` про флаг не знают вовсе — они просто рендерят готовые
+  `PopupRow`, поэтому одна настройка одинаково действует на все четыре темы и
+  обе поверхности без единой правки в UI-слое.
 
 ## Headless UI-тесты (без запуска приложения)
 

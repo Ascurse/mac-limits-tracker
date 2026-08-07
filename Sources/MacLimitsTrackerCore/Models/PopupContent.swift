@@ -284,10 +284,12 @@ public enum PopupContentBuilder {
         _ state: ProviderState,
         now: Date = Date(),
         history: [UsageSample] = [],
-        thresholds: SeverityThresholds = .standard
+        thresholds: SeverityThresholds = .standard,
+        showTrends: Bool = true
     ) -> ProviderSectionContent {
         let resolved = SnapshotResolver.resolve(state)
-        var rows = rows(for: state.descriptor, snapshot: resolved.snapshot, now: now, history: history, thresholds: thresholds)
+        var rows = rows(for: state.descriptor, snapshot: resolved.snapshot, now: now, history: history,
+                        thresholds: thresholds, showTrends: showTrends)
         if resolved.isStale, let snapshot = resolved.snapshot, let error = resolved.error {
             rows.append(.note("updated \(relativeFormatter.localizedString(for: snapshot.fetchedAt, relativeTo: now))"))
             rows.append(.recovery(ProviderErrorRecoveryMapper.recover(rawError: error, providerName: state.descriptor.displayName)))
@@ -308,9 +310,12 @@ public enum PopupContentBuilder {
         now: Date = Date(),
         history: (String) -> [UsageSample] = { _ in [] },
         thresholds: SeverityThresholds = .standard,
-        costResult: CostEstimateResult? = nil
+        costResult: CostEstimateResult? = nil,
+        showTrends: Bool = true
     ) -> [ProviderSectionContent] {
-        var result = states.map { section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds) }
+        var result = states.map {
+            section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds, showTrends: showTrends)
+        }
         if let costResult { result.append(costSection(costResult)) }
         return result
     }
@@ -388,7 +393,8 @@ public enum PopupContentBuilder {
         snapshot: LimitsSnapshot?,
         now: Date,
         history: [UsageSample],
-        thresholds: SeverityThresholds
+        thresholds: SeverityThresholds,
+        showTrends: Bool
     ) -> [PopupRow] {
         guard let snap = snapshot else { return [.note("Loading…")] }
         if let e = snap.providerError {
@@ -396,7 +402,8 @@ public enum PopupContentBuilder {
         }
 
         var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
-        rows.append(contentsOf: usageRows(for: descriptor, snap, now: now, history: history, thresholds: thresholds))
+        rows.append(contentsOf: usageRows(for: descriptor, snap, now: now, history: history,
+                                          thresholds: thresholds, showTrends: showTrends))
         rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
         rows.append(contentsOf: renewalRows(snap, now: now))
         return rows
@@ -409,13 +416,14 @@ public enum PopupContentBuilder {
         _ snap: LimitsSnapshot,
         now: Date,
         history: [UsageSample],
-        thresholds: SeverityThresholds
+        thresholds: SeverityThresholds,
+        showTrends: Bool
     ) -> [PopupRow] {
         guard let windows = snap.windows else {
             if let ue = snap.usageError { return [.recovery(ProviderErrorRecoveryMapper.recover(rawError: ue, providerName: descriptor.displayName))] }
             return [.note("Loading usage…")]
         }
-        var rows = windowRows(windows, now: now, history: history, thresholds: thresholds)
+        var rows = windowRows(windows, now: now, history: history, thresholds: thresholds, showTrends: showTrends)
         if let bal = snap.creditsBalance, !bal.isEmpty {
             rows.append(.detail(key: "Credits", value: bal))
         }
@@ -437,7 +445,8 @@ public enum PopupContentBuilder {
         _ windows: [SnapshotWindow],
         now: Date,
         history: [UsageSample],
-        thresholds: SeverityThresholds
+        thresholds: SeverityThresholds,
+        showTrends: Bool
     ) -> [PopupRow] {
         let rangeStart = now.addingTimeInterval(-Self.trendRangeDays * 24 * 3600)
         let rangeEnd = now
@@ -483,14 +492,34 @@ public enum PopupContentBuilder {
             // UsageTrendView обрабатывает все состояния контракта сам:
             // ok → полный график, sparse/stale → только маркеры с note,
             // gap → разорванная линия с note, empty → пропускаем (не шумим).
+            // showTrends == false (bd mac-limits-tracker-gld.4): график заменяется
+            // одной компактной строкой .note — remaining/reset в windowRow это не
+            // трогает, .empty по-прежнему молчит (тот же принцип «не шумим»).
             switch trend.dataState {
             case .empty:
                 break
             default:
-                rows.append(.sparkline(trend))
+                if showTrends {
+                    rows.append(.sparkline(trend))
+                } else if let summary = compactTrendSummary(trend) {
+                    rows.append(.note(summary))
+                }
             }
 
             return rows
+        }
+    }
+
+    /// Компактная текстовая замена графика тренда, когда showTrends выключен:
+    /// для .ok — «7d: старт% → текущий%», для остальных ненулевых состояний —
+    /// тот же fallbackText, что показывает UsageTrendView рядом с маркерами.
+    private static func compactTrendSummary(_ content: SparklineContent) -> String? {
+        switch content.dataState {
+        case .ok:
+            guard let first = content.points.first, let last = content.points.last else { return nil }
+            return "7d: \(Int(first.remainingPercent))% → \(Int(last.remainingPercent))%"
+        default:
+            return content.fallbackText
         }
     }
 

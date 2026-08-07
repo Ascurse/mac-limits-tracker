@@ -28,7 +28,8 @@ struct DesktopWindowView: View {
                         viewModel.states,
                         history: viewModel.historySamples(providerId:),
                         thresholds: viewModel.severityThresholds,
-                        costResult: viewModel.costEstimate),
+                        costResult: viewModel.costEstimate,
+                        showTrends: viewModel.showUsageTrends),
                     theme: viewModel.appTheme,
                     surface: .desktop)
                 Divider()
