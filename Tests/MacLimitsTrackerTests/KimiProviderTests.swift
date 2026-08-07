@@ -226,7 +226,9 @@ final class KimiLimitsProviderUsageTests: XCTestCase {
     }
 
     func test_fetch_expiresAtInPast_httpGetNeverCalled() async {
-        var httpGetCalled = false
+        // DI-замыкания теперь @Sendable; провайдер вызывает их последовательно через await
+        // внутри одного `fetch()`, реальной конкуренции нет — компилятору это не видно.
+        nonisolated(unsafe) var httpGetCalled = false
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
             fileReader: { _ in self.credentialsJSON(expiresAt: 1) },
@@ -245,7 +247,8 @@ final class KimiLimitsProviderUsageTests: XCTestCase {
     func test_fetch_expiredToken_refreshSucceeds_usageFetchedWithNewToken() async {
         let past = 1.0
         let future = Date().addingTimeInterval(900).timeIntervalSince1970
-        var receivedTokens: [String] = []
+        // См. комментарий в test_fetch_expiresAtInPast_httpGetNeverCalled.
+        nonisolated(unsafe) var receivedTokens: [String] = []
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
             fileReader: { _ in self.credentialsJSON(expiresAt: past) },
@@ -282,8 +285,9 @@ final class KimiLimitsProviderUsageTests: XCTestCase {
 
     func test_fetch_usages401_refreshSucceeds_retriesWithNewToken() async {
         let future = Date().addingTimeInterval(900).timeIntervalSince1970
-        var calls = 0
-        var receivedTokens: [String] = []
+        // См. комментарий в test_fetch_expiresAtInPast_httpGetNeverCalled.
+        nonisolated(unsafe) var calls = 0
+        nonisolated(unsafe) var receivedTokens: [String] = []
         let provider = KimiLimitsProvider(
             credentialsURL: URL(fileURLWithPath: "/does/not/matter.json"),
             fileReader: { _ in self.credentialsJSON(expiresAt: future) },

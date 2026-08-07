@@ -1,21 +1,20 @@
 import Foundation
 import Security
 
-/// Источник данных о лимитах Claude Code.
-/// `@unchecked Sendable`: замыкания-зависимости сами по себе не Sendable, но в проде они
-/// (`ProcessRunner.run`, `KeychainStore.readClaudeCodeCredentials`, `Http.httpGet`) без
-/// состояния и безопасны при повторных/параллельных вызовах. DI-замыкания в тестах, которые
-/// пишут в захваченные `var`, полагаются на то, что тест не гоняет `fetch()` параллельно с
-/// самим собой — если такое понадобится, нужен другой примитив, не просто эта аннотация.
-public struct ClaudeLimitsProvider: @unchecked Sendable {
+/// Источник данных о лимитах Claude Code. DI-замыкания помечены `@Sendable`, поэтому
+/// структура — честный `Sendable` без `@unchecked`. Тестовые подстановки, которые пишут в
+/// захваченные `var`, обязаны сами быть `@Sendable`-безопасны (напр. `nonisolated(unsafe)`
+/// поле-накопитель под их собственный лок) — компилятор теперь это проверяет на границе
+/// замыкания, а не полагается на честное слово.
+public struct ClaudeLimitsProvider: Sendable {
     let claudeBinary: String
     let statsCacheURL: URL
-    let processRunner: (String, [String]) async throws -> Data
-    let fileReader: (URL) async throws -> Data
+    let processRunner: @Sendable (String, [String]) async throws -> Data
+    let fileReader: @Sendable (URL) async throws -> Data
     /// Читает JSON-blob из macOS Keychain по службе `Claude Code-credentials`.
-    let keychainReader: () async throws -> Data
+    let keychainReader: @Sendable () async throws -> Data
     /// Выполняет GET с `Authorization: Bearer <token>`; возвращает тело ответа.
-    let httpGet: (URL, String) async throws -> Data
+    let httpGet: @Sendable (URL, String) async throws -> Data
 
     static let usageURL = URL(string: "https://claude.ai/api/oauth/usage")!
 
@@ -24,10 +23,10 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
         statsCacheURL: URL = FileManager.default
             .homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/stats-cache.json"),
-        processRunner: @escaping (String, [String]) async throws -> Data = ProcessRunner.run,
-        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
-        keychainReader: @escaping () async throws -> Data = KeychainStore.readClaudeCodeCredentials,
-        httpGet: @escaping (URL, String) async throws -> Data = { try await Http.httpGet($0, $1) }
+        processRunner: @escaping @Sendable (String, [String]) async throws -> Data = { try await ProcessRunner.run($0, $1) },
+        fileReader: @escaping @Sendable (URL) async throws -> Data = { try Data(contentsOf: $0) },
+        keychainReader: @escaping @Sendable () async throws -> Data = { try await KeychainStore.readClaudeCodeCredentials() },
+        httpGet: @escaping @Sendable (URL, String) async throws -> Data = { try await Http.httpGet($0, $1) }
     ) {
         self.claudeBinary = claudeBinary ?? ProcessRunner.defaultClaudeBinary()
         self.statsCacheURL = statsCacheURL
@@ -102,21 +101,20 @@ public struct ClaudeLimitsProvider: @unchecked Sendable {
     }
 }
 
-/// Источник данных о лимитах Codex.
-/// `@unchecked Sendable`: см. комментарий у `ClaudeLimitsProvider`.
-public struct CodexLimitsProvider: @unchecked Sendable {
+/// Источник данных о лимитах Codex. Честный `Sendable`: см. комментарий у `ClaudeLimitsProvider`.
+public struct CodexLimitsProvider: Sendable {
     let authFileURL: URL
-    let fileReader: (URL) async throws -> Data
+    let fileReader: @Sendable (URL) async throws -> Data
     /// Выполняет init + `account/rateLimits/read` через `codex app-server`, возвращает
     /// body JSON-RPC ответа (envelope) для `id=2` или кидает ошибку.
-    let appServerReader: () async throws -> Data
+    let appServerReader: @Sendable () async throws -> Data
 
     public init(
         authFileURL: URL = FileManager.default
             .homeDirectoryForCurrentUser
             .appendingPathComponent(".codex/auth.json"),
-        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
-        appServerReader: (() async throws -> Data)? = nil
+        fileReader: @escaping @Sendable (URL) async throws -> Data = { try Data(contentsOf: $0) },
+        appServerReader: (@Sendable () async throws -> Data)? = nil
     ) {
         self.authFileURL = authFileURL
         self.fileReader = fileReader
@@ -222,7 +220,7 @@ public struct CodexLimitsProvider: @unchecked Sendable {
 /// Источник данных о лимитах Kimi (Moonshot AI). Логин определяется по локальному
 /// credentials-файлу (непустой `refresh_token`), usage — по live-запросу к
 /// `GET /coding/v1/usages` (см. bd mac-limits-tracker-6gk.8).
-public struct KimiLimitsProvider: @unchecked Sendable {
+public struct KimiLimitsProvider: Sendable {
     /// Дефолтный путь credentials-файла; вынесен в статику, чтобы `ProviderRegistry`
     /// мог использовать то же значение по умолчанию без дублирования. Должен быть
     /// `public` — Swift требует видимость default-параметра не ниже видимости функции,
@@ -234,19 +232,19 @@ public struct KimiLimitsProvider: @unchecked Sendable {
     static let usagesURL = URL(string: "https://api.kimi.com/coding/v1/usages")!
 
     let credentialsURL: URL
-    let fileReader: (URL) async throws -> Data
+    let fileReader: @Sendable (URL) async throws -> Data
     /// Выполняет GET с `Authorization: Bearer <token>`; возвращает тело ответа.
-    let httpGet: (URL, String) async throws -> Data
+    let httpGet: @Sendable (URL, String) async throws -> Data
     /// Обновляет access_token через auth.kimi.com и атомарно переписывает credentials-файл.
-    let refresh: (KimiCredentialsFile) async throws -> KimiCredentialsFile
+    let refresh: @Sendable (KimiCredentialsFile) async throws -> KimiCredentialsFile
 
     init(
         credentialsURL: URL = KimiLimitsProvider.defaultCredentialsURL,
-        fileReader: @escaping (URL) async throws -> Data = { try Data(contentsOf: $0) },
-        refresh: ((KimiCredentialsFile) async throws -> KimiCredentialsFile)? = nil,
+        fileReader: @escaping @Sendable (URL) async throws -> Data = { try Data(contentsOf: $0) },
+        refresh: (@Sendable (KimiCredentialsFile) async throws -> KimiCredentialsFile)? = nil,
         // UA нейтральный: `Http.httpGet` по умолчанию шлёт `claude-code/...`, что для
         // стороннего API Kimi некорректно и может триггерить фильтрацию по UA.
-        httpGet: @escaping (URL, String) async throws -> Data = {
+        httpGet: @escaping @Sendable (URL, String) async throws -> Data = {
             try await Http.httpGet($0, $1, userAgent: "mac-limits-tracker/1.0")
         }
     ) {
