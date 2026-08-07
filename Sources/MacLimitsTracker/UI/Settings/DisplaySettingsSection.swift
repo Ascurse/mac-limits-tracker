@@ -48,6 +48,15 @@ struct DisplaySettingsSection: View {
             .controlSize(controlSize)
             .accessibilityLabel("Menu bar")
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("Show 7-day usage trends", isOn: Binding(
+                get: { viewModel.showUsageTrends },
+                set: { viewModel.setShowUsageTrends($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(controlSize)
+            .accessibilityLabel("Show 7-day usage trends")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

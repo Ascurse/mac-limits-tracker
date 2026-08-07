@@ -33,6 +33,9 @@ public final class LimitsViewModel: ObservableObject {
     @Published public private(set) var menuBarDisplayMode: MenuBarDisplayMode
     /// Показывать десктопный виджет — персистится в AppSettingsStore.
     @Published public private(set) var showDesktopWidget: Bool
+    /// Показывать 7-дневные графики тренда — персистится в AppSettingsStore
+    /// (bd mac-limits-tracker-gld.4). Один флаг на все темы и обе поверхности.
+    @Published public private(set) var showUsageTrends: Bool
     /// Последняя оценка стоимости из локальных логов (агрегат по CLI).
     /// nil до первого refreshCostEstimate(). Обновляется НЕЗАВИСИМО от
     /// refresh() квот — отдельный путь и отдельный Task (bd 725.2).
@@ -79,6 +82,7 @@ public final class LimitsViewModel: ObservableObject {
         self.appTheme = appSettingsStore.appTheme
         self.menuBarDisplayMode = appSettingsStore.menuBarDisplayMode
         self.showDesktopWidget = appSettingsStore.showDesktopWidget
+        self.showUsageTrends = appSettingsStore.showUsageTrends
     }
 
     /// Id, по которым ведутся настройки: реестр + id dynamic-спек, включая
@@ -276,6 +280,14 @@ public final class LimitsViewModel: ObservableObject {
     public func setShowDesktopWidget(_ show: Bool) {
         showDesktopWidget = show
         appSettingsStore.showDesktopWidget = show
+    }
+
+    /// Включает/выключает показ 7-дневных графиков тренда: персистит в
+    /// AppSettingsStore. Чисто presentation-переключатель — не трогает
+    /// снапшоты/историю и не вызывает refresh/сетевые запросы.
+    public func setShowUsageTrends(_ show: Bool) {
+        showUsageTrends = show
+        appSettingsStore.showUsageTrends = show
     }
 
     /// Меняет интервал автообновления: персистит и перезапускает таймер,

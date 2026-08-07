@@ -722,6 +722,81 @@ final class PopupContentBuilderSparklineTests: XCTestCase {
     }
 }
 
+/// Глобальная настройка showUsageTrends (bd mac-limits-tracker-gld.4): выключение
+/// заменяет `.sparkline` компактной `.note`-строкой, не трогая соседнюю `.window`
+/// (текущий remaining/reset остаётся) и не шумя, когда истории вовсе нет (.empty).
+final class PopupContentBuilderShowTrendsTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func makeState(fiveHourUsed: Double? = 28) -> ProviderState {
+        let snap = LimitsSnapshot(
+            loggedIn: true, plan: "max",
+            windows: [SnapshotWindow(windowDurationMins: 300, usedPercent: fiveHourUsed, resetsAt: nil)],
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: nil, fetchedAt: now
+        )
+        return ProviderState(descriptor: claudeDescriptor, snapshot: snap)
+    }
+
+    private func sample(hoursAgo: Double, used: Double) -> UsageSample {
+        UsageSample(providerId: "claude", windowMins: 300,
+                    fetchedAt: now.addingTimeInterval(-hoursAgo * 3600),
+                    usedPercent: used, resetsAt: nil)
+    }
+
+    private func hasSparkline(_ s: ProviderSectionContent) -> Bool {
+        s.rows.contains { if case .sparkline = $0 { return true }; return false }
+    }
+
+    private func notes(_ s: ProviderSectionContent) -> [String] {
+        s.rows.compactMap { if case .note(let t) = $0 { return t }; return nil }
+    }
+
+    func test_showTrendsDefault_insertsSparklineRow() {
+        let history = [sample(hoursAgo: 2, used: 20), sample(hoursAgo: 1, used: 40)]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history)
+        XCTAssertTrue(hasSparkline(s))
+    }
+
+    func test_showTrendsFalse_okData_replacesSparklineWithCompactNote() {
+        let history = [sample(hoursAgo: 2, used: 20), sample(hoursAgo: 1, used: 40)]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history, showTrends: false)
+
+        XCTAssertFalse(hasSparkline(s), "график не должен рендериться при showTrends == false")
+        XCTAssertTrue(notes(s).contains { $0.contains("80%") && $0.contains("60%") },
+                      "компактная строка должна нести остаток начала и конца тренда, notes: \(notes(s))")
+    }
+
+    func test_showTrendsFalse_windowRowUnaffected() {
+        let history = [sample(hoursAgo: 2, used: 20), sample(hoursAgo: 1, used: 40)]
+        let sOn = PopupContentBuilder.section(makeState(), now: now, history: history, showTrends: true)
+        let sOff = PopupContentBuilder.section(makeState(), now: now, history: history, showTrends: false)
+
+        guard case .window(let onWindow) = sOn.rows[1], case .window(let offWindow) = sOff.rows[1] else {
+            return XCTFail("окно должно остаться первой строкой usage независимо от showTrends")
+        }
+        XCTAssertEqual(onWindow.remainingText, offWindow.remainingText)
+        XCTAssertEqual(onWindow.resetText, offWindow.resetText)
+    }
+
+    func test_showTrendsFalse_sparseData_showsFallbackNote() {
+        let history = [sample(hoursAgo: 1, used: 40)]
+        let s = PopupContentBuilder.section(makeState(), now: now, history: history, showTrends: false)
+
+        XCTAssertFalse(hasSparkline(s))
+        XCTAssertTrue(notes(s).contains { $0.contains("1 sample") },
+                      "недостаточные данные должны нести тот же fallbackText, что и маркеры графика, notes: \(notes(s))")
+    }
+
+    func test_showTrendsFalse_noHistory_staysNeutralNoRow() {
+        let s = PopupContentBuilder.section(makeState(), now: now, history: [], showTrends: false)
+
+        XCTAssertFalse(hasSparkline(s))
+        XCTAssertTrue(notes(s).isEmpty, "нет истории вовсе — молчим так же, как и при включённых трендах, notes: \(notes(s))")
+    }
+}
+
 final class PopupContentBuilderStaleTests: XCTestCase {
     private static let now = Date(timeIntervalSince1970: 2_000_000)
     private static let past = Date(timeIntervalSince1970: 1_000_000)

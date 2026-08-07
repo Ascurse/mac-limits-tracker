@@ -16,7 +16,8 @@ struct TerminalStatusView: View {
                     viewModel.states,
                     history: viewModel.historySamples(providerId:),
                     thresholds: viewModel.severityThresholds,
-                    costResult: viewModel.costEstimate),
+                    costResult: viewModel.costEstimate,
+                    showTrends: viewModel.showUsageTrends),
                 theme: .terminal,
                 surface: .menuBar)
             Rectangle().fill(TerminalPalette.track).frame(height: 1)
