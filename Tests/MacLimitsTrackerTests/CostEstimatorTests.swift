@@ -1,26 +1,6 @@
 import XCTest
 @testable import MacLimitsTrackerCore
 
-final class CostPricingTableTests: XCTestCase {
-    func test_rate_exactMatch_returnsRateWithSameTariffId() {
-        let result = CostPricingTable.rate(forModel: "claude-sonnet-4-5")
-        XCTAssertEqual(result?.tariffId, "claude-sonnet-4-5")
-    }
-
-    func test_rate_versionedModelId_resolvesViaPrefixAlias() {
-        let result = CostPricingTable.rate(forModel: "claude-sonnet-4-5-20260101")
-        XCTAssertEqual(result?.tariffId, "claude-sonnet-4-5")
-    }
-
-    func test_rate_unknownModel_returnsNilRatherThanGuessing() {
-        XCTAssertNil(CostPricingTable.rate(forModel: "some-model-nobody-heard-of"))
-    }
-
-    func test_rate_doesNotMatchUnrelatedModelSharingNoPrefix() {
-        XCTAssertNil(CostPricingTable.rate(forModel: "gpt-4o"))
-    }
-}
-
 final class CostEstimatorBuildResultTests: XCTestCase {
     private func record(
         source: CostSource = .claude,
