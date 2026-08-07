@@ -138,6 +138,23 @@ final class KimiMembershipLevelFormatterTests: XCTestCase {
     func test_prettify_empty_returnsNil() {
         XCTAssertNil(KimiMembershipLevelFormatter.prettify(""))
     }
+
+    func test_prettify_onlyPrefix_returnsNil() {
+        XCTAssertNil(KimiMembershipLevelFormatter.prettify("LEVEL_"))
+    }
+
+    func test_prettify_multipleUnderscores_handlesEmptyComponents() {
+        // "SUPER" and "USER" should be capitalized and joined, extra underscores might create empty splits depending on omitEmptySubsequences which is true by default
+        XCTAssertEqual(KimiMembershipLevelFormatter.prettify("LEVEL_SUPER__USER"), "Super User")
+    }
+
+    func test_prettify_mixedCasing_capitalizesCorrectly() {
+        XCTAssertEqual(KimiMembershipLevelFormatter.prettify("LEVEL_inTerMedIate"), "Intermediate")
+    }
+
+    func test_prettify_noPrefixWithUnderscores_capitalizesCorrectly() {
+        XCTAssertEqual(KimiMembershipLevelFormatter.prettify("SOME_OTHER_LEVEL"), "Some Other Level")
+    }
 }
 
 /// `KimiStatus.toSnapshot()` с реальными usage-данными (bd mac-limits-tracker-6gk.8).
