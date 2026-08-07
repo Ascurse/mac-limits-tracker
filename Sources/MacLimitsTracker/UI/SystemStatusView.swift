@@ -28,6 +28,7 @@ struct SystemStatusView: View {
         HStack(spacing: 8) {
             Image(systemName: "gauge.with.dots.needle.bottom.50percent")
                 .font(.title3)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Limits Tracker")
                     .font(.headline)

@@ -48,39 +48,20 @@ public enum UsageTrendPresentationPolicy {
 
     public static func viewState(for content: SparklineContent) -> UsageTrendViewState {
         let severity = Severity.from(remainingPercent: content.currentPercent)
-        let severityCue: String
-        switch severity {
-        case .normal: severityCue = ""
-        case .warning: severityCue = "warning"
-        case .critical: severityCue = "critical"
-        }
+        let severityCue = severityCue(for: severity)
 
-        let segments: [[SparklinePoint]]
-        let showsLine: Bool
-        switch content.dataState {
-        case .ok:
-            segments = content.points.isEmpty ? [] : [content.points]
-            showsLine = true
-        case .gap(_, let thresholdSeconds):
-            segments = splitAtGaps(content.points, threshold: thresholdSeconds)
-            showsLine = true
-        case .sparse, .stale:
-            // Точки есть, но уверенной линии нет — только маркеры.
-            segments = content.points.isEmpty ? [] : [content.points]
-            showsLine = false
-        case .empty, .loading:
-            segments = []
-            showsLine = false
-        }
+        let (segments, showsLine) = buildSegmentsAndLine(for: content)
 
         let fallback = content.fallbackText
         let noteText = fallback.isEmpty ? nil : fallback
         let currentText = String(format: "%.0f%%", content.currentPercent)
         let trendRangeLabel = trendRangeLabel(start: content.rangeStart, end: content.rangeEnd)
 
-        let valueParts = [currentText + " remaining", severityCue, noteText]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
+        let accessibilityValue = buildAccessibilityValue(
+            currentText: currentText,
+            severityCue: severityCue,
+            noteText: noteText
+        )
 
         return UsageTrendViewState(
             shortLabel: content.shortLabel,
@@ -99,8 +80,37 @@ public enum UsageTrendPresentationPolicy {
             showsLine: showsLine,
             noteText: noteText,
             accessibilityLabel: "\(content.shortLabel) \(trendRangeLabel) usage trend",
-            accessibilityValue: valueParts.joined(separator: ", ")
+            accessibilityValue: accessibilityValue
         )
+    }
+
+    private static func severityCue(for severity: Severity) -> String {
+        switch severity {
+        case .normal: return ""
+        case .warning: return "warning"
+        case .critical: return "critical"
+        }
+    }
+
+    private static func buildSegmentsAndLine(for content: SparklineContent) -> (segments: [[SparklinePoint]], showsLine: Bool) {
+        switch content.dataState {
+        case .ok:
+            return (content.points.isEmpty ? [] : [content.points], true)
+        case .gap(_, let thresholdSeconds):
+            return (splitAtGaps(content.points, threshold: thresholdSeconds), true)
+        case .sparse, .stale:
+            // Точки есть, но уверенной линии нет — только маркеры.
+            return (content.points.isEmpty ? [] : [content.points], false)
+        case .empty, .loading:
+            return ([], false)
+        }
+    }
+
+    private static func buildAccessibilityValue(currentText: String, severityCue: String, noteText: String?) -> String {
+        return [currentText + " remaining", severityCue, noteText]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
     }
 
     private static func splitAtGaps(_ points: [SparklinePoint], threshold: TimeInterval) -> [[SparklinePoint]] {

@@ -24,6 +24,41 @@ final class KimiJwtPayloadParserTests: XCTestCase {
         XCTAssertEqual(KimiJwtPayloadParser.planClaim(fromToken: token), "kimi-pro")
     }
 
+    func test_planClaim_foundByAlternativeKeys() {
+        let altKeys = ["plan_type", "planType", "subscription_plan", "subscriptionPlan", "tier"]
+        for key in altKeys {
+            let token = makeJwt(payload: [key: "some-tier", "sub": "user-1"])
+            XCTAssertEqual(KimiJwtPayloadParser.planClaim(fromToken: token), "some-tier", "Failed to extract plan using key: \(key)")
+        }
+    }
+
+    func test_planClaim_emptyStringValue_returnsNilOrNextMatch() {
+        // Empty "plan", but "tier" has a valid value
+        let token = makeJwt(payload: ["plan": "", "tier": "kimi-pro"])
+        XCTAssertEqual(KimiJwtPayloadParser.planClaim(fromToken: token), "kimi-pro")
+
+        // Only empty "plan"
+        let tokenEmpty = makeJwt(payload: ["plan": ""])
+        XCTAssertNil(KimiJwtPayloadParser.planClaim(fromToken: tokenEmpty))
+    }
+
+    func test_planClaim_nonStringValue_returnsNilOrNextMatch() {
+        // "plan" is integer, "tier" is string
+        let token = makeJwt(payload: ["plan": 123, "tier": "kimi-pro"])
+        XCTAssertEqual(KimiJwtPayloadParser.planClaim(fromToken: token), "kimi-pro")
+
+        // Only integer "plan"
+        let tokenInt = makeJwt(payload: ["plan": 123])
+        XCTAssertNil(KimiJwtPayloadParser.planClaim(fromToken: tokenInt))
+    }
+
+    func test_planClaim_multipleMatchingKeys_returnsFirstMatch() {
+        // The array in code is: ["plan", "plan_type", "planType", "subscription_plan", "subscriptionPlan", "tier"]
+        // So "plan" should take precedence over "tier"
+        let token = makeJwt(payload: ["tier": "lower-tier", "plan": "higher-tier"])
+        XCTAssertEqual(KimiJwtPayloadParser.planClaim(fromToken: token), "higher-tier")
+    }
+
     func test_planClaim_noRecognizableClaim_returnsNil() {
         let token = makeJwt(payload: ["sub": "user-1", "exp": 123])
         XCTAssertNil(KimiJwtPayloadParser.planClaim(fromToken: token))
