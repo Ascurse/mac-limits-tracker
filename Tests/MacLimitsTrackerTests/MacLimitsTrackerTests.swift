@@ -273,8 +273,10 @@ final class ClaudeLimitsProviderTests: XCTestCase {
         {"five_hour":{"utilization":11.0,"resets_at":"2026-07-11T20:59:59.513044+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null},
          "seven_day":{"utilization":22.0,"resets_at":"2026-07-16T05:59:59.513065+00:00","limit_dollars":null,"used_dollars":null,"remaining_dollars":null}}
         """.utf8)
-        var requestedURL: URL?
-        var requestedBearer: String?
+        // DI-замыкания теперь @Sendable; провайдер вызывает их последовательно через await
+        // внутри одного `fetch()`, реальной конкуренции нет — компилятору это не видно.
+        nonisolated(unsafe) var requestedURL: URL?
+        nonisolated(unsafe) var requestedBearer: String?
         let provider = ClaudeLimitsProvider(
             claudeBinary: "/bin/does-not-matter",
             statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
@@ -307,7 +309,8 @@ final class ClaudeLimitsProviderTests: XCTestCase {
         let credentialsJSON = Data("""
         {"claudeAiOauth":{"accessToken":"tok-abc","expiresAt":\(expiredMS)}}
         """.utf8)
-        var httpCalled = false
+        // См. комментарий выше про @Sendable DI-замыкания и последовательный await.
+        nonisolated(unsafe) var httpCalled = false
         let provider = ClaudeLimitsProvider(
             claudeBinary: "/bin/does-not-matter",
             statsCacheURL: URL(fileURLWithPath: "/does/not/matter.json"),
