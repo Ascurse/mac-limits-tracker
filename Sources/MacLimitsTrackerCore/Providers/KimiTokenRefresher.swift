@@ -62,7 +62,7 @@ struct KimiTokenRefresher {
         case 200:
             let response: KimiOAuthTokenResponse
             do {
-                response = try JSONDecoder().decode(
+                response = try JSONDecoder.shared.decode(
                     KimiOAuthTokenResponse.self, from: body
                 )
             } catch {
@@ -104,7 +104,7 @@ struct KimiTokenRefresher {
         old: KimiCredentialsFile, credentialsURL: URL
     ) async throws -> KimiCredentialsFile? {
         guard let data = try? await fileReader(credentialsURL),
-              let file = try? JSONDecoder().decode(KimiCredentialsFile.self, from: data),
+              let file = try? JSONDecoder.shared.decode(KimiCredentialsFile.self, from: data),
               !file.refreshToken.isEmpty,
               file.accessToken != old.accessToken,
               let expiresAt = file.expiresAt,
