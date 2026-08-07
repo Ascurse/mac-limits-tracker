@@ -30,3 +30,8 @@
 
 # Личные настройки codex CLI (модель, reasoning effort) — не общая конфигурация
 .codex/config.toml
+
+# Backup-файлы редакторов/инструментов — не коммитим
+*.orig
+*.bak
+*~
