@@ -15,7 +15,8 @@ struct SystemStatusView: View {
                     history: viewModel.historySamples(providerId:),
                     thresholds: viewModel.severityThresholds,
                     costResult: viewModel.costEstimate,
-                    showTrends: viewModel.showUsageTrends),
+                    showTrends: viewModel.showUsageTrends,
+                    showDailyBudget: viewModel.showDailyBudget),
                 theme: .system,
                 surface: .menuBar)
             Divider()

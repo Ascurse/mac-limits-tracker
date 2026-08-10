@@ -797,6 +797,105 @@ final class PopupContentBuilderShowTrendsTests: XCTestCase {
     }
 }
 
+final class PopupContentBuilderDailyBudgetTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 2_000_000)
+
+    private var descriptor: ProviderDescriptor {
+        ProviderDescriptor(id: "daily", displayName: "Daily", shortName: "Daily",
+                           menuBarSymbol: "D", accentColorHex: 0, loginHelp: nil)
+    }
+
+    private func state(windows: [SnapshotWindow], providerError: String? = nil,
+                       lastGoodWindows: [SnapshotWindow]? = nil) -> ProviderState {
+        let snapshot = LimitsSnapshot(
+            loggedIn: true, plan: "plus", windows: windows,
+            creditsBalance: nil, rateLimitReachedType: nil, details: [],
+            daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+            providerError: providerError, fetchedAt: now)
+        let lastGood = lastGoodWindows.map {
+            LimitsSnapshot(loggedIn: true, plan: "plus", windows: $0,
+                           creditsBalance: nil, rateLimitReachedType: nil, details: [],
+                           daysUntilRenewal: nil, renewalDate: nil, usageError: nil,
+                           providerError: nil, fetchedAt: now.addingTimeInterval(-60))
+        }
+        return ProviderState(descriptor: descriptor, snapshot: snapshot, lastGoodSnapshot: lastGood)
+    }
+
+    private func utcCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    private func dailyBudget(in section: ProviderSectionContent) -> DailyBudgetContent? {
+        for row in section.rows {
+            if case .dailyBudget(let content) = row { return content }
+        }
+        return nil
+    }
+
+    func test_freshWeeklyWindow_addsDailyBudgetAfterWindow() throws {
+        let weekly = SnapshotWindow(windowDurationMins: 10080, usedPercent: 41,
+                                    resetsAt: now.addingTimeInterval(86_400))
+        let section = PopupContentBuilder.section(state(windows: [weekly]), now: now,
+                                                  showDailyBudget: true, calendar: utcCalendar())
+        XCTAssertEqual(section.rows.count, 3)
+        guard case .window = section.rows[1], case .dailyBudget = section.rows[2] else {
+            return XCTFail("daily budget must follow the weekly window: \(section.rows)")
+        }
+        XCTAssertNotNil(dailyBudget(in: section))
+    }
+
+    func test_showDailyBudgetFalse_omitsRow() {
+        let weekly = SnapshotWindow(windowDurationMins: 10080, usedPercent: 41,
+                                    resetsAt: now.addingTimeInterval(86_400))
+        let section = PopupContentBuilder.section(state(windows: [weekly]), now: now,
+                                                  showDailyBudget: false, calendar: utcCalendar())
+        XCTAssertNil(dailyBudget(in: section))
+        XCTAssertEqual(section.rows.count, 2)
+    }
+
+    func test_onlyFiveHourWindow_omitsRow() {
+        let fiveHour = SnapshotWindow(windowDurationMins: 300, usedPercent: 41,
+                                      resetsAt: now.addingTimeInterval(86_400))
+        XCTAssertNil(dailyBudget(in: PopupContentBuilder.section(
+            state(windows: [fiveHour]), now: now, calendar: utcCalendar())))
+    }
+
+    func test_invalidWeeklyData_omitsRow() {
+        let missingUsed = SnapshotWindow(windowDurationMins: 10080, usedPercent: nil,
+                                         resetsAt: now.addingTimeInterval(86_400))
+        let missingReset = SnapshotWindow(windowDurationMins: 10080, usedPercent: 50,
+                                          resetsAt: nil)
+        let pastReset = SnapshotWindow(windowDurationMins: 10080, usedPercent: 50,
+                                      resetsAt: now.addingTimeInterval(-1))
+        XCTAssertNil(dailyBudget(in: PopupContentBuilder.section(
+            state(windows: [missingUsed]), now: now, calendar: utcCalendar())))
+        XCTAssertNil(dailyBudget(in: PopupContentBuilder.section(
+            state(windows: [missingReset]), now: now, calendar: utcCalendar())))
+        XCTAssertNil(dailyBudget(in: PopupContentBuilder.section(
+            state(windows: [pastReset]), now: now, calendar: utcCalendar())))
+    }
+
+    func test_staleWeeklyData_omitsRow() {
+        let weekly = SnapshotWindow(windowDurationMins: 10080, usedPercent: 41,
+                                    resetsAt: now.addingTimeInterval(86_400))
+        let section = PopupContentBuilder.section(
+            state(windows: [weekly], providerError: "network", lastGoodWindows: [weekly]),
+            now: now, calendar: utcCalendar())
+        XCTAssertTrue(section.isStale)
+        XCTAssertNil(dailyBudget(in: section))
+    }
+
+    func test_zeroRemaining_keepsDailyBudgetRow() throws {
+        let weekly = SnapshotWindow(windowDurationMins: 10080, usedPercent: 100,
+                                    resetsAt: now.addingTimeInterval(86_400))
+        let section = PopupContentBuilder.section(state(windows: [weekly]), now: now,
+                                                  calendar: utcCalendar())
+        XCTAssertEqual(try XCTUnwrap(dailyBudget(in: section)).budgetPercent, 0)
+    }
+}
+
 final class PopupContentBuilderStaleTests: XCTestCase {
     private static let now = Date(timeIntervalSince1970: 2_000_000)
     private static let past = Date(timeIntervalSince1970: 1_000_000)

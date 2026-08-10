@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${1:-$ROOT/dist}"
 APP_NAME="MacLimitsTracker"
 APP_DIR="$OUT_DIR/$APP_NAME.app"
+SIGNING_IDENTITY="${MAC_LIMITS_TRACKER_SIGNING_IDENTITY:--}"
 # Версия бандла; CI передаёт из тега (APP_VERSION="${GITHUB_REF_NAME#v}").
 APP_VERSION="${APP_VERSION:-0.1.0}"
 
@@ -49,7 +50,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP_DIR"
+codesign --force --sign "$SIGNING_IDENTITY" "$APP_DIR"
 
 echo "Done: $APP_DIR"
 echo "Run with: open \"$APP_DIR\""

@@ -18,18 +18,15 @@ public enum DailyBudgetCalculator {
         calendar: Calendar
     ) -> DailyBudget? {
         guard let resetAt, resetAt > now else { return nil }
-
         let startOfDay = calendar.startOfDay(for: now)
         guard let endOfLocalDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
             return nil
         }
-
         let usableUntil = min(endOfLocalDay, resetAt)
         guard usableUntil > now else { return nil }
 
         let clampedRemaining = min(max(remainingPercent, 0), 100)
         let ratio = usableUntil.timeIntervalSince(now) / resetAt.timeIntervalSince(now)
-
         return DailyBudget(
             budgetPercent: clampedRemaining * ratio,
             resetAt: resetAt

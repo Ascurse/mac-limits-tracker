@@ -137,7 +137,6 @@ final class AppSettingsStoreTests: XCTestCase {
     func test_showDailyBudget_roundTripsAcrossStoreInstances() {
         AppSettingsStore(defaults: defaults).showDailyBudget = false
         XCTAssertFalse(AppSettingsStore(defaults: defaults).showDailyBudget)
-
         AppSettingsStore(defaults: defaults).showDailyBudget = true
         XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
     }

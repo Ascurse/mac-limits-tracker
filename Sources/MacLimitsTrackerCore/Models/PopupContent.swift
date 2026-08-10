@@ -5,6 +5,7 @@ import Foundation
 public enum PopupRow: Equatable {
     case detail(key: String, value: String)
     case window(WindowContent)
+    case dailyBudget(DailyBudgetContent)
     case sparkline(SparklineContent)
     case burnRate(BurnRateContent)
     case cost(CostRowContent)
@@ -168,6 +169,18 @@ public struct BurnRateContent: Equatable, Sendable {
     }
 }
 
+public struct DailyBudgetContent: Equatable, Sendable {
+    public let budgetPercent: Double
+    public let resetAt: Date
+    public let displayText: String
+
+    public init(budgetPercent: Double, resetAt: Date, displayText: String) {
+        self.budgetPercent = budgetPercent
+        self.resetAt = resetAt
+        self.displayText = displayText
+    }
+}
+
 /// Серьёзность остатка лимита: пороги по ОСТАТКУ (не по использованному).
 public enum Severity: Equatable, Sendable {
     case normal
@@ -285,11 +298,15 @@ public enum PopupContentBuilder {
         now: Date = Date(),
         history: [UsageSample] = [],
         thresholds: SeverityThresholds = .standard,
-        showTrends: Bool = true
+        showTrends: Bool = true,
+        showDailyBudget: Bool = true,
+        calendar: Calendar = .current
     ) -> ProviderSectionContent {
         let resolved = SnapshotResolver.resolve(state)
         var rows = rows(for: state.descriptor, snapshot: resolved.snapshot, now: now, history: history,
-                        thresholds: thresholds, showTrends: showTrends)
+                        thresholds: thresholds, showTrends: showTrends,
+                        showDailyBudget: showDailyBudget, calendar: calendar,
+                        isStale: resolved.isStale)
         if resolved.isStale, let snapshot = resolved.snapshot, let error = resolved.error {
             rows.append(.note("updated \(relativeFormatter.localizedString(for: snapshot.fetchedAt, relativeTo: now))"))
             rows.append(.recovery(ProviderErrorRecoveryMapper.recover(rawError: error, providerName: state.descriptor.displayName)))
@@ -311,10 +328,13 @@ public enum PopupContentBuilder {
         history: (String) -> [UsageSample] = { _ in [] },
         thresholds: SeverityThresholds = .standard,
         costResult: CostEstimateResult? = nil,
-        showTrends: Bool = true
+        showTrends: Bool = true,
+        showDailyBudget: Bool = true,
+        calendar: Calendar = .current
     ) -> [ProviderSectionContent] {
         var result = states.map {
-            section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds, showTrends: showTrends)
+            section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds,
+                    showTrends: showTrends, showDailyBudget: showDailyBudget, calendar: calendar)
         }
         if let costResult { result.append(costSection(costResult)) }
         return result
@@ -394,7 +414,10 @@ public enum PopupContentBuilder {
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds,
-        showTrends: Bool
+        showTrends: Bool,
+        showDailyBudget: Bool,
+        calendar: Calendar,
+        isStale: Bool
     ) -> [PopupRow] {
         guard let snap = snapshot else { return [.note("Loading…")] }
         if let e = snap.providerError {
@@ -403,7 +426,9 @@ public enum PopupContentBuilder {
 
         var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
         rows.append(contentsOf: usageRows(for: descriptor, snap, now: now, history: history,
-                                          thresholds: thresholds, showTrends: showTrends))
+                                          thresholds: thresholds, showTrends: showTrends,
+                                          showDailyBudget: showDailyBudget, calendar: calendar,
+                                          isStale: isStale))
         rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
         rows.append(contentsOf: renewalRows(snap, now: now))
         return rows
@@ -417,13 +442,18 @@ public enum PopupContentBuilder {
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds,
-        showTrends: Bool
+        showTrends: Bool,
+        showDailyBudget: Bool,
+        calendar: Calendar,
+        isStale: Bool
     ) -> [PopupRow] {
         guard let windows = snap.windows else {
             if let ue = snap.usageError { return [.recovery(ProviderErrorRecoveryMapper.recover(rawError: ue, providerName: descriptor.displayName))] }
             return [.note("Loading usage…")]
         }
-        var rows = windowRows(windows, now: now, history: history, thresholds: thresholds, showTrends: showTrends)
+        var rows = windowRows(windows, now: now, history: history, thresholds: thresholds,
+                             showTrends: showTrends, showDailyBudget: showDailyBudget,
+                             calendar: calendar, isStale: isStale)
         if let bal = snap.creditsBalance, !bal.isEmpty {
             rows.append(.detail(key: "Credits", value: bal))
         }
@@ -446,7 +476,10 @@ public enum PopupContentBuilder {
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds,
-        showTrends: Bool
+        showTrends: Bool,
+        showDailyBudget: Bool,
+        calendar: Calendar,
+        isStale: Bool
     ) -> [PopupRow] {
         let rangeStart = now.addingTimeInterval(-Self.trendRangeDays * 24 * 3600)
         let rangeEnd = now
@@ -461,6 +494,19 @@ public enum PopupContentBuilder {
             guard let usedPercent = w.usedPercent, let durationMins = w.windowDurationMins else { return [row] }
 
             var rows: [PopupRow] = [row]
+
+            if durationMins == 10080, showDailyBudget, !isStale,
+               let dailyBudget = DailyBudgetCalculator.calculate(
+                   remainingPercent: 100 - usedPercent,
+                   resetAt: w.resetsAt,
+                   now: now,
+                   calendar: calendar) {
+                let percent = Int(dailyBudget.budgetPercent.rounded())
+                rows.append(.dailyBudget(DailyBudgetContent(
+                    budgetPercent: dailyBudget.budgetPercent,
+                    resetAt: dailyBudget.resetAt,
+                    displayText: "Today pace: ~\(percent)% of weekly limit")))
+            }
 
             if let burnRate = BurnRateCalculator.calculate(
                 samples: history,
