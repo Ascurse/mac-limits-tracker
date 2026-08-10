@@ -23,6 +23,19 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## Изоляция задач
+
+Каждую задачу выполняй в отдельном `git worktree` и отдельной ветке. Не редактируй общий
+рабочий каталог или базовую ветку напрямую. Перед началом работы создай worktree рядом с
+репозиторием, например:
+
+```bash
+git worktree add -b <task-branch> ../mac-limits-tracker-<task> <base-branch>
+```
+
+После завершения задачи worktree можно удалить только после того, как изменения закоммичены и
+ветка опубликована или работа явно передана дальше.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
