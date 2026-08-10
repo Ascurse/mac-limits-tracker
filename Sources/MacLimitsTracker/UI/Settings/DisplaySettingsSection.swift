@@ -57,6 +57,15 @@ struct DisplaySettingsSection: View {
             .controlSize(controlSize)
             .accessibilityLabel("Show 7-day usage trends")
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle("Show daily budget", isOn: Binding(
+                get: { viewModel.showDailyBudget },
+                set: { viewModel.setShowDailyBudget($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(controlSize)
+            .accessibilityLabel("Show daily budget")
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
