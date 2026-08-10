@@ -35,3 +35,11 @@
 *.orig
 *.bak
 *~
+# bd worktree
+mac-limits-tracker-gld.5/
+# bd worktree
+mac-limits-tracker-v8c.3/
+# bd worktree
+mac-limits-tracker-0na.3/
+# bd worktree
+mac-limits-tracker-v8c.1/
