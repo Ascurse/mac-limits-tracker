@@ -129,6 +129,23 @@ final class AppSettingsStoreTests: XCTestCase {
         defaults.set(false, forKey: "showUsageTrends")
         XCTAssertFalse(AppSettingsStore(defaults: defaults).showUsageTrends)
     }
+
+    func test_noSavedValue_showDailyBudgetDefaultsToTrue() {
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
+    }
+
+    func test_showDailyBudget_roundTripsAcrossStoreInstances() {
+        AppSettingsStore(defaults: defaults).showDailyBudget = false
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).showDailyBudget)
+
+        AppSettingsStore(defaults: defaults).showDailyBudget = true
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
+    }
+
+    func test_storedFalseShowDailyBudget_doesNotFallBackToTrue() {
+        defaults.set(false, forKey: "showDailyBudget")
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).showDailyBudget)
+    }
 }
 
 /// LimitsViewModel + AppSettingsStore: интервал читается из настроек и
@@ -389,6 +406,40 @@ final class LimitsViewModelDisplaySettingsTests: XCTestCase {
             historyStore: historyStore
         )
         vm.setShowUsageTrends(false)
+        XCTAssertEqual(counter.value, 0)
+    }
+
+    func test_noSavedShowDailyBudget_viewModelDefaultsToTrue() {
+        XCTAssertTrue(makeVM().showDailyBudget)
+    }
+
+    func test_savedShowDailyBudget_isLoadedOnInit() {
+        AppSettingsStore(defaults: defaults).showDailyBudget = false
+        XCTAssertFalse(makeVM().showDailyBudget)
+    }
+
+    func test_setShowDailyBudget_updatesPublishedValueAndPersists() {
+        let vm = makeVM()
+
+        vm.setShowDailyBudget(false)
+        XCTAssertFalse(vm.showDailyBudget)
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).showDailyBudget)
+
+        vm.setShowDailyBudget(true)
+        XCTAssertTrue(vm.showDailyBudget)
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
+    }
+
+    func test_setShowDailyBudget_doesNotTriggerRefresh() {
+        let counter = _FetchCounter()
+        let vm = LimitsViewModel(
+            providers: [_CountingProvider(id: "test", counter: counter)],
+            settingsStore: ProviderSettingsStore(defaults: defaults),
+            appSettingsStore: AppSettingsStore(defaults: defaults),
+            historyStore: historyStore
+        )
+
+        vm.setShowDailyBudget(false)
         XCTAssertEqual(counter.value, 0)
     }
 

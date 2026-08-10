@@ -16,6 +16,7 @@ public final class AppSettingsStore {
     private static let showDesktopWidgetKey = "showDesktopWidget"
     private static let autoRefreshEnabledKey = "autoRefreshEnabled"
     private static let showUsageTrendsKey = "showUsageTrends"
+    private static let showDailyBudgetKey = "showDailyBudget"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -89,5 +90,10 @@ public final class AppSettingsStore {
     public var showUsageTrends: Bool {
         get { defaults.object(forKey: Self.showUsageTrendsKey) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Self.showUsageTrendsKey) }
+    }
+
+    public var showDailyBudget: Bool {
+        get { defaults.object(forKey: Self.showDailyBudgetKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.showDailyBudgetKey) }
     }
 }
