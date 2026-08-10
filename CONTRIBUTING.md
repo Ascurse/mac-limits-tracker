@@ -71,7 +71,9 @@ swift run -c release VerifyCli
   known traps are indexed there. Non-trivial findings from your change are
   welcome as short journal entries.
 - User-facing documentation (README, this file) is in English; journal entries
-  are in Russian.
+  are in Russian. If a change alters user-visible behavior, update the README in
+  the same PR. Record non-trivial architectural decisions and gotchas in the
+  journal in the same change rather than deferring them.
 
 ## Code of Conduct
 
