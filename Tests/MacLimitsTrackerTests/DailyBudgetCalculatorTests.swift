@@ -9,14 +9,13 @@ final class DailyBudgetCalculatorTests: XCTestCase {
         return calendar
     }
 
+    private func date(_ value: String) -> Date {
+        ISO8601DateFormatter().date(from: value)!
+    }
     private func calendar(timeZone: String) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: timeZone)!
         return calendar
-    }
-
-    private func date(_ value: String) -> Date {
-        ISO8601DateFormatter().date(from: value)!
     }
 
     func test_resetAfterLocalDayEnd_scalesRemainingToUsableTime() throws {
@@ -37,7 +36,6 @@ final class DailyBudgetCalculatorTests: XCTestCase {
     func test_resetBeforeLocalDayEnd_allRemainingIsUsableUntilReset() throws {
         let now = date("2026-07-31T15:00:00Z")
         let resetAt = date("2026-07-31T18:00:00Z")
-
         let budget = DailyBudgetCalculator.calculate(
             remainingPercent: 25,
             resetAt: resetAt,
@@ -50,7 +48,6 @@ final class DailyBudgetCalculatorTests: XCTestCase {
 
     func test_missingOrExpiredReset_returnsNil() {
         let now = date("2026-07-31T15:00:00Z")
-
         XCTAssertNil(DailyBudgetCalculator.calculate(
             remainingPercent: 50,
             resetAt: nil,
@@ -74,7 +71,6 @@ final class DailyBudgetCalculatorTests: XCTestCase {
     func test_zeroRemaining_returnsZeroBudget() throws {
         let now = date("2026-07-31T15:00:00Z")
         let resetAt = date("2026-08-01T00:00:00Z")
-
         let budget = DailyBudgetCalculator.calculate(
             remainingPercent: 0,
             resetAt: resetAt,
@@ -124,7 +120,6 @@ final class DailyBudgetCalculatorTests: XCTestCase {
             now: now,
             calendar: calendar
         )
-
         XCTAssertEqual(try XCTUnwrap(budget).budgetPercent, 50.0 / 3.0, accuracy: 0.000_000_001)
     }
 
@@ -139,7 +134,6 @@ final class DailyBudgetCalculatorTests: XCTestCase {
             now: now,
             calendar: calendar
         )
-
         XCTAssertEqual(try XCTUnwrap(budget).budgetPercent, 30, accuracy: 0.000_000_001)
     }
 }

@@ -408,6 +408,12 @@ final class LimitsViewModelDisplaySettingsTests: XCTestCase {
         XCTAssertEqual(counter.value, 0)
     }
 
+    func test_showDailyBudget_isLoadedAndPersistsWithoutRefresh() {
+        AppSettingsStore(defaults: defaults).showDailyBudget = false
+        let vm = makeVM()
+        XCTAssertFalse(vm.showDailyBudget)
+    }
+
     func test_noSavedShowDailyBudget_viewModelDefaultsToTrue() {
         XCTAssertTrue(makeVM().showDailyBudget)
     }
