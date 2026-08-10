@@ -36,6 +36,7 @@ public final class LimitsViewModel: ObservableObject {
     /// Показывать 7-дневные графики тренда — персистится в AppSettingsStore
     /// (bd mac-limits-tracker-gld.4). Один флаг на все темы и обе поверхности.
     @Published public private(set) var showUsageTrends: Bool
+    @Published public private(set) var showDailyBudget: Bool
     /// Последняя оценка стоимости из локальных логов (агрегат по CLI).
     /// nil до первого refreshCostEstimate(). Обновляется НЕЗАВИСИМО от
     /// refresh() квот — отдельный путь и отдельный Task (bd 725.2).
@@ -83,6 +84,7 @@ public final class LimitsViewModel: ObservableObject {
         self.menuBarDisplayMode = appSettingsStore.menuBarDisplayMode
         self.showDesktopWidget = appSettingsStore.showDesktopWidget
         self.showUsageTrends = appSettingsStore.showUsageTrends
+        self.showDailyBudget = appSettingsStore.showDailyBudget
     }
 
     /// Id, по которым ведутся настройки: реестр + id dynamic-спек, включая
@@ -288,6 +290,11 @@ public final class LimitsViewModel: ObservableObject {
     public func setShowUsageTrends(_ show: Bool) {
         showUsageTrends = show
         appSettingsStore.showUsageTrends = show
+    }
+
+    public func setShowDailyBudget(_ show: Bool) {
+        showDailyBudget = show
+        appSettingsStore.showDailyBudget = show
     }
 
     /// Меняет интервал автообновления: персистит и перезапускает таймер,

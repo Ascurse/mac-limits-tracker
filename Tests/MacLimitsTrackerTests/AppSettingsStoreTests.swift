@@ -129,6 +129,15 @@ final class AppSettingsStoreTests: XCTestCase {
         defaults.set(false, forKey: "showUsageTrends")
         XCTAssertFalse(AppSettingsStore(defaults: defaults).showUsageTrends)
     }
+
+    func test_noSavedValue_showDailyBudgetDefaultsToTrue() {
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
+    }
+
+    func test_showDailyBudget_roundTripsAcrossStoreInstances() {
+        AppSettingsStore(defaults: defaults).showDailyBudget = false
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).showDailyBudget)
+    }
 }
 
 /// LimitsViewModel + AppSettingsStore: интервал читается из настроек и
@@ -390,6 +399,15 @@ final class LimitsViewModelDisplaySettingsTests: XCTestCase {
         )
         vm.setShowUsageTrends(false)
         XCTAssertEqual(counter.value, 0)
+    }
+
+    func test_showDailyBudget_isLoadedAndPersistsWithoutRefresh() {
+        AppSettingsStore(defaults: defaults).showDailyBudget = false
+        let vm = makeVM()
+        XCTAssertFalse(vm.showDailyBudget)
+        vm.setShowDailyBudget(true)
+        XCTAssertTrue(vm.showDailyBudget)
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
     }
 
     // MARK: - autoRefresh
