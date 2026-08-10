@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import os
 
 /// Источник данных о лимитах Claude Code. DI-замыкания помечены `@Sendable`, поэтому
 /// структура — честный `Sendable` без `@unchecked`. Тестовые подстановки, которые пишут в
@@ -7,6 +8,11 @@ import Security
 /// поле-накопитель под их собственный лок) — компилятор теперь это проверяет на границе
 /// замыкания, а не полагается на честное слово.
 public struct ClaudeLimitsProvider: Sendable {
+    private static let logger = Logger(
+        subsystem: "dev.ascurse.MacLimitsTracker",
+        category: "Claude"
+    )
+
     let claudeBinary: String
     let statsCacheURL: URL
     let processRunner: @Sendable (String, [String]) async throws -> Data
@@ -46,6 +52,7 @@ public struct ClaudeLimitsProvider: Sendable {
             let data = try await processRunner(claudeBinary, ["auth", "status"])
             auth = ClaudeAuthParser.parse(data)
         } catch {
+            Self.logger.error("auth status failed: \(friendly(error), privacy: .public)")
             errors.append("claude auth status failed: \(friendly(error))")
         }
 
@@ -53,6 +60,7 @@ public struct ClaudeLimitsProvider: Sendable {
             let data = try await fileReader(statsCacheURL)
             stats = try JSONDecoder.shared.decode(StatsCache.self, from: data)
         } catch {
+            Self.logger.error("stats cache read failed: \(friendly(error), privacy: .public)")
             errors.append("stats cache read failed: \(friendly(error))")
         }
 
@@ -87,15 +95,19 @@ public struct ClaudeLimitsProvider: Sendable {
         do {
             let keychainData = try await keychainReader()
             guard let creds = ClaudeKeychainCredentialsParser.accessToken(keychainData) else {
+                Self.logger.error("usage fetch failed: oauth token not found")
                 return (nil, "claude.ai oauth token not found")
             }
             if let exp = creds.expiresAt, exp <= Date() {
+                Self.logger.error("usage fetch failed: login expired")
                 return (nil, "claude.ai login expired — open Claude Code to refresh")
             }
             let body = try await httpGet(Self.usageURL, creds.token)
             if let usage = ClaudeUsageParser.parse(body) { return (usage, nil) }
+            Self.logger.error("usage fetch failed: response unreadable")
             return (nil, "claude.ai usage response unreadable")
         } catch {
+            Self.logger.error("usage fetch failed: \(friendly(error), privacy: .public)")
             return (nil, "claude.ai usage fetch failed: \(friendly(error))")
         }
     }
@@ -103,6 +115,11 @@ public struct ClaudeLimitsProvider: Sendable {
 
 /// Источник данных о лимитах Codex. Честный `Sendable`: см. комментарий у `ClaudeLimitsProvider`.
 public struct CodexLimitsProvider: Sendable {
+    private static let logger = Logger(
+        subsystem: "dev.ascurse.MacLimitsTracker",
+        category: "Codex"
+    )
+
     let authFileURL: URL
     let fileReader: @Sendable (URL) async throws -> Data
     /// Выполняет init + `account/rateLimits/read` через `codex app-server`, возвращает
@@ -156,6 +173,7 @@ public struct CodexLimitsProvider: Sendable {
                 providerError: nil
             )
         }
+        Self.logger.error("auth token missing")
         return CodexStatus(
             loggedIn: loggedIn,
             authMode: file.authMode,
@@ -170,6 +188,8 @@ public struct CodexLimitsProvider: Sendable {
     }
 
     private func buildErrorStatus(error: Error, now: Date) -> CodexStatus {
+        let message = friendly(error)
+        Self.logger.error("auth file read failed: \(message, privacy: .public)")
         return CodexStatus(
             loggedIn: false, authMode: nil,
             email: nil, planType: nil,
@@ -177,7 +197,7 @@ public struct CodexLimitsProvider: Sendable {
             accountOwner: nil,
             usage: nil, usageError: nil,
             fetchedAt: now,
-            providerError: "auth.json read failed: \(friendly(error))"
+            providerError: "auth.json read failed: \(message)"
         )
     }
 
@@ -208,10 +228,12 @@ public struct CodexLimitsProvider: Sendable {
             if let snapshot = CodexUsageParser.parse(envelope) {
                 return (CodexUsage(snapshot: snapshot, error: nil), nil)
             }
+            Self.logger.error("usage fetch failed: response unreadable")
             return (CodexUsage(snapshot: nil, error: "codex usage response unreadable"),
                     "codex usage response unreadable")
         } catch {
             let msg = "codex app-server: \(friendly(error))"
+            Self.logger.error("usage fetch failed: \(friendly(error), privacy: .public)")
             return (CodexUsage(snapshot: nil, error: msg), msg)
         }
     }
@@ -221,6 +243,11 @@ public struct CodexLimitsProvider: Sendable {
 /// credentials-файлу (непустой `refresh_token`), usage — по live-запросу к
 /// `GET /coding/v1/usages` (см. bd mac-limits-tracker-6gk.8).
 public struct KimiLimitsProvider: Sendable {
+    private static let logger = Logger(
+        subsystem: "dev.ascurse.MacLimitsTracker",
+        category: "Kimi"
+    )
+
     /// Дефолтный путь credentials-файла; вынесен в статику, чтобы `ProviderRegistry`
     /// мог использовать то же значение по умолчанию без дублирования. Должен быть
     /// `public` — Swift требует видимость default-параметра не ниже видимости функции,
@@ -261,6 +288,7 @@ public struct KimiLimitsProvider: Sendable {
         do {
             let creds = try await readCredentials()
             guard !creds.refreshToken.isEmpty else {
+                Self.logger.error("credentials refresh token missing")
                 return KimiStatus(loggedIn: false, plan: nil, usage: nil, usageError: nil,
                                   providerError: "kimi-code refresh token missing", fetchedAt: now)
             }
@@ -270,6 +298,7 @@ public struct KimiLimitsProvider: Sendable {
                 activeCreds = try await refreshIfNeeded(creds, now: now)
             } catch {
                 let jwtPlan = KimiJwtPayloadParser.planClaim(fromToken: creds.accessToken)
+                Self.logger.error("token refresh failed: \(friendly(error), privacy: .public)")
                 return mapRefreshError(error, jwtPlan: jwtPlan, now: now)
             }
 
@@ -279,9 +308,11 @@ public struct KimiLimitsProvider: Sendable {
             return KimiStatus(loggedIn: true, plan: plan, usage: usage,
                               usageError: usageError, providerError: nil, fetchedAt: now)
         } catch {
+            let message = friendly(error)
+            Self.logger.error("credentials read failed: \(message, privacy: .public)")
             return KimiStatus(
                 loggedIn: false, plan: nil, usage: nil, usageError: nil,
-                providerError: "kimi-code credentials read failed: \(friendly(error))",
+                providerError: "kimi-code credentials read failed: \(message)",
                 fetchedAt: now
             )
         }
@@ -303,15 +334,19 @@ public struct KimiLimitsProvider: Sendable {
         if let refreshError = error as? KimiTokenRefreshError {
             switch refreshError {
             case .loginExpired:
+                Self.logger.error("token refresh failed: login expired")
                 return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
                                   usageError: "Kimi login expired — open Kimi Code to refresh",
                                   providerError: nil, fetchedAt: now)
             case .refreshFailed(let msg):
+                Self.logger.error("token refresh failed: \(msg, privacy: .public)")
                 return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
                                   usageError: "Kimi token refresh failed: \(msg)",
                                   providerError: nil, fetchedAt: now)
             }
         }
+        let message = friendly(error)
+        Self.logger.error("token refresh failed: \(message, privacy: .public)")
         return KimiStatus(loggedIn: true, plan: jwtPlan, usage: nil,
                           usageError: "Kimi token refresh failed: \(friendly(error))",
                           providerError: nil, fetchedAt: now)
@@ -326,28 +361,34 @@ public struct KimiLimitsProvider: Sendable {
         do {
             let body = try await httpGet(Self.usagesURL, creds.accessToken)
             guard let parsed = KimiUsagesParser.parse(body) else {
+                Self.logger.error("usage fetch failed: response unreadable")
                 return (nil, nil, "Kimi usage response unreadable")
             }
             return (parsed.usage, parsed.membershipLevel, nil)
         } catch {
             guard isUnauthorized(error) else {
+                Self.logger.error("usage fetch failed: \(friendly(error), privacy: .public)")
                 return (nil, nil, "Kimi usage fetch failed: \(friendly(error))")
             }
             do {
                 let newCreds = try await refresh(creds)
                 let body = try await httpGet(Self.usagesURL, newCreds.accessToken)
                 guard let parsed = KimiUsagesParser.parse(body) else {
+                    Self.logger.error("usage retry failed: response unreadable")
                     return (nil, nil, "Kimi usage response unreadable")
                 }
                 return (parsed.usage, parsed.membershipLevel, nil)
             } catch let refreshError as KimiTokenRefreshError {
                 switch refreshError {
                 case .loginExpired:
+                    Self.logger.error("token refresh failed: login expired")
                     return (nil, nil, expiredMessage)
                 case .refreshFailed(let msg):
+                    Self.logger.error("token refresh failed: \(msg, privacy: .public)")
                     return (nil, nil, "Kimi token refresh failed: \(msg)")
                 }
             } catch {
+                Self.logger.error("token refresh failed: \(friendly(error), privacy: .public)")
                 return (nil, nil, "Kimi token refresh failed: \(friendly(error))")
             }
         }

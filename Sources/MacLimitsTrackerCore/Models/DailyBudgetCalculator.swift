@@ -27,6 +27,9 @@ public enum DailyBudgetCalculator {
 
         let clampedRemaining = min(max(remainingPercent, 0), 100)
         let ratio = usableUntil.timeIntervalSince(now) / resetAt.timeIntervalSince(now)
-        return DailyBudget(budgetPercent: clampedRemaining * ratio, resetAt: resetAt)
+        return DailyBudget(
+            budgetPercent: clampedRemaining * ratio,
+            resetAt: resetAt
+        )
     }
 }
