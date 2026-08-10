@@ -166,6 +166,19 @@ This local bundle is not a distributable release. If Gatekeeper quarantines an a
 xattr -dr com.apple.quarantine /Applications/MacLimitsTracker.app
 ```
 
+### Stable local signing without Developer ID
+
+If the Claude Code Keychain prompt returns after every rebuild, select a stable Apple Development identity:
+
+```bash
+export MAC_LIMITS_TRACKER_SIGNING_IDENTITY='Apple Development: Your Name (PERSONAL_TEAM_ID)'
+./scripts/dev/setup-local-signing.sh
+./make-app.sh
+open dist/MacLimitsTracker.app
+```
+
+Use only an identity from your personal Apple Account, never a work identity. The first `codesign` operation may ask for access to the signing key; choose **Always Allow**. The first app refresh may separately ask for `Claude Code-credentials`; choose **Always Allow** there too. Later rebuilds using the same identity should keep the same Keychain ACL. Apple Development signing is for local development: it does not provide Gatekeeper trust, notarization, or a public release certificate. The default `./make-app.sh` path remains ad-hoc.
+
 ### Source-build rollout and rollback
 
 Distribute source builds by recording the exact Git tag or commit used, building that ref on each target Mac with `./make-app.sh`, quitting the running app, and replacing its existing bundle with `dist/MacLimitsTracker.app`. Keep the previous bundle until the replacement has launched and refreshed successfully.
@@ -199,7 +212,7 @@ Success produces a signed, notarized and stapled app plus `dist/MacLimitsTracker
 
 ### Runtime permission prompts
 
-- **Claude Code Keychain** — the first refresh from a newly built ad-hoc app may ask for access to `Claude Code-credentials`. Choose **Always Allow** if you trust the local build. Ad-hoc signatures change on rebuild, so the prompt can return; a stable Developer ID signature avoids that repeated ACL prompt.
+- **Claude Code Keychain** — the first refresh from a newly built app may ask for access to `Claude Code-credentials`. Choose **Always Allow** if you trust the local build. Ad-hoc signatures change on rebuild, so the prompt can return; the stable local identity above is intended to keep the prompt from returning on this Mac.
 - **Notifications** — enabling notifications for the first time shows the standard macOS authorization prompt. The feature is unavailable under `swift run` because notification delivery requires an app bundle.
 - **Launch at login** — macOS can register the app but leave it in **requires approval** state until the user confirms it under **System Settings → General → Login Items**.
 

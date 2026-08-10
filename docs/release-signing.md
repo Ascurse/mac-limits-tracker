@@ -38,6 +38,21 @@ Before you run the pipeline, you need:
 
 The default app path is `dist/MacLimitsTracker.app`.
 
+## Stable local signing without Developer ID
+
+For a personal Mac, use a stable Apple Development identity instead of the changing ad-hoc identity:
+
+```bash
+export MAC_LIMITS_TRACKER_SIGNING_IDENTITY='Apple Development: Your Name (PERSONAL_TEAM_ID)'
+./scripts/dev/setup-local-signing.sh
+./make-app.sh
+open dist/MacLimitsTracker.app
+```
+
+The helper selects an existing Apple Development certificate created by Xcode. The first `codesign` operation may ask for access to the signing key; accept it with **Always Allow**. The first app refresh may separately ask for access to `Claude Code-credentials`; accept that with **Always Allow** too. Rebuilds that use the same identity should keep the same Keychain ACL for `Claude Code-credentials`.
+
+Apple Development signing is local-only. It does not satisfy Apple notarization requirements, does not make Gatekeeper trust an app downloaded on another Mac, and must not be used by CI or the public release workflow. If the helper cannot find an Apple Development identity, sign in to Xcode with an Apple Account and create one under Xcode → Settings → Accounts → Manage Certificates. The normal `./make-app.sh` command remains ad-hoc; the `scripts/release/sign-and-notarize.sh` pipeline remains Developer ID-only.
+
 ## Local dry-run and preflight checks
 
 Use `--dry-run` to run all preflight checks and print the commands the pipeline would execute, without changing any files or making network calls:
@@ -69,11 +84,11 @@ Both flags mutate nothing. If anything is missing, the script prints `FAIL-CLOSE
 
 ## Local signing mechanics test (no Developer ID needed)
 
-If you do not have a `Developer ID Application` certificate locally, you can still test the sign and verify mechanics with an override identity. The local machine currently has an `Apple Distribution:` identity for team `56764BSR9B`, so the following command will sign and verify the bundle without notarization:
+If you do not have a `Developer ID Application` certificate locally, the release script can test signing mechanics with an identity you own. This override is unrelated to the personal local-signing path above and must never point at a work certificate:
 
 ```bash
 ./scripts/release/sign-and-notarize.sh \
-  --identity-override "Apple Distribution: Zigmund AM, LLC (56764BSR9B)" \
+  --identity-override "Your own test identity" \
   --skip-notarize
 ```
 
@@ -97,7 +112,7 @@ Store credentials in your keychain once, then reference them by profile name:
 ```bash
 xcrun notarytool store-credentials "MacLimitsTracker-notary" \
   --apple-id your-apple-id@example.com \
-  --team-id 56764BSR9B \
+  --team-id YOUR_TEAM_ID \
   --password your-app-specific-password
 ```
 
@@ -131,7 +146,7 @@ Use an app-specific password directly. The password is passed only to `notarytoo
 export DEVELOPER_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)"
 export APPLE_ID="your-apple-id@example.com"
 export APPLE_APP_PASSWORD="abcd-efgh-ijkl-mnop"
-export APPLE_TEAM_ID="56764BSR9B"
+export APPLE_TEAM_ID="YOUR_TEAM_ID"
 ./scripts/release/sign-and-notarize.sh
 ```
 
