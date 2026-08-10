@@ -56,7 +56,11 @@ Both windows are the live, server-side rate-limit quotas, fetched from `GET http
 - A **Quota** row for the purchased, non-expiring credit pool (`usage.limit` / `.used` / `.remaining`) — this is a running balance, not a time window, so it's shown as a detail line rather than a progress window.
 - Usage is fetched live from `GET https://api.kimi.com/coding/v1/usages`; the OAuth access token is short-lived (~15 min) and refreshed automatically via `https://auth.kimi.com/api/oauth/token`, rewriting the credentials file in place.
 
-Under each window row, the popup also renders a **24-hour sparkline** built from locally recorded history samples (see [Usage history](#usage-history)).
+Under each window row, the popup can render a **7-day usage trend** built from locally recorded history samples (see [Usage history](#usage-history)). The trend is enabled by default and can be replaced with a compact `7d: start% → current%` summary from the display settings.
+
+For weekly windows, the popup also shows a **daily budget** by default: the approximate percentage of the remaining weekly quota to use today to stay on pace for the reset. It is hidden when the weekly data is stale or the calculation has no reset time.
+
+The popup also includes a **Cost estimate** section based on locally readable Claude Code and Codex usage logs. It is an estimate, not provider billing: incomplete pricing is shown as a lower bound, and unavailable logs are reported explicitly.
 
 Hovering the menu-bar icon shows a tooltip with every enabled provider's plan and window remaining %, e.g. `Claude: Max · 5h 78% · weekly 95% · Codex: Plus · 5h 99% · weekly 82%`, so you get the headline state without opening the popup.
 
@@ -66,14 +70,14 @@ The popup supports four themes, switchable from the footer picker:
 
 - **System** — native macOS look (default). Rows use the provider's accent color only; window bars are **not** tinted by severity.
 - **Terminal** — Tokyo Night palette with progress bars, tinted normal / warning / critical by severity.
-- **Phosphor** — monochrome green CRT with `█░` bars; only critical is visually distinct (inverted bar), warning renders the same as normal.
+- **Phosphor** — monochrome green CRT with `█▓▒` bars and severity markers; warning and critical remain distinguishable without relying on color.
 - **TUI** — htop-style panels with `[||||··]` gauges, tinted normal / warning / critical by severity.
 
 The choice is persisted in `UserDefaults` (`appTheme`). The menu-bar icon/label and the desktop widget are never tinted by severity, regardless of theme.
 
 ## Usage history
 
-Every successful refresh appends one sample per (provider, window) to a local history file (`history.json` in `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`), deduplicating unchanged values and pruning anything older than 7 days. The popup's sparklines (see [What it shows](#what-it-shows)) plot the last 24 hours of that history; the desktop widget does not show sparklines.
+Every successful refresh appends one sample per (provider, window) to a local history file (`history.json` in `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`), deduplicating unchanged values and pruning anything older than 7 days. The popup's trends (see [What it shows](#what-it-shows)) use up to 7 days of that history; the desktop widget does not show trends or daily-budget rows.
 
 ## Notifications
 
@@ -97,6 +101,8 @@ The controls below are shared by the popup footer, the desktop window's **Settin
 | Refresh every | 30 sec / 1 min / 5 min / 15 min | 5 min |
 | Warning at | 20 / 30 / 40 / 50 / 60% remaining | 40% |
 | Critical at | 5 / 10 / 15 / 20 / 25% remaining (below warning) | 15% |
+| Show 7-day usage trends | on/off | on |
+| Show daily budget | on/off | on |
 | Providers | per-provider enable + reorder (▲/▼) | all enabled, registry order |
 | Auto-refresh | on/off | on |
 | Desktop widget | on/off | off |
