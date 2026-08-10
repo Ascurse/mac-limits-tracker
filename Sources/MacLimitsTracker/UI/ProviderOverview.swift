@@ -168,6 +168,11 @@ struct SystemOverviewBody: View {
         case .window(let w):
             detailRow("\(w.longLabel) remaining", w.remainingText)
             detailRow("\(w.longLabel) resets", w.resetText ?? "—")
+        case .dailyBudget(let budget):
+            Text(budget.displayText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Daily budget: \(budget.displayText)")
         case .sparkline(let spark):
             UsageTrendView(content: spark,
                            tokens: systemTrendTokens(accent: accent),
@@ -308,6 +313,11 @@ struct TerminalOverviewBody: View {
                         .padding(.leading, 26)
                 }
             }
+        case .dailyBudget(let budget):
+            Text(budget.displayText)
+                .foregroundStyle(Palette.dim)
+                .padding(.leading, 26)
+                .accessibilityLabel("Daily budget: \(budget.displayText)")
         case .sparkline(let spark):
             UsageTrendView(content: spark,
                            tokens: terminalTrendTokens(accent: accent),
@@ -473,6 +483,11 @@ struct PhosphorOverviewBody: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(w.longLabel), \(w.remainingText) remaining, \(w.severity.accessibilityLabel)")
+        case .dailyBudget(let budget):
+            Text(budget.displayText)
+                .foregroundStyle(Palette.mid)
+                .padding(.leading, 26)
+                .accessibilityLabel("Daily budget: \(budget.displayText)")
         case .sparkline(let spark):
             UsageTrendView(content: spark,
                            tokens: phosphorTrendTokens,
@@ -612,6 +627,12 @@ struct TUIOverviewBody: View {
                         .padding(.leading, 24)
                 }
             }
+        case .dailyBudget(let budget):
+            Text("[\(budget.displayText)]")
+                .font(.caption)
+                .foregroundStyle(Palette.dim)
+                .padding(.leading, 24)
+                .accessibilityLabel("Daily budget: \(budget.displayText)")
         case .sparkline(let spark):
             UsageTrendView(content: spark,
                            tokens: tuiTrendTokens,
