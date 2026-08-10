@@ -2,6 +2,8 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+Project-wide conventions and shared memory live in [AGENTS.md](AGENTS.md), including `docs/journal/` retrieval and update rules. The Beads block below is tool-specific; keep general project instructions in `AGENTS.md`.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 

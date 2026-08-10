@@ -49,7 +49,9 @@ swift run -c release VerifyCli
 
 ## Pull requests
 
-1. Fork the repo and branch from `main` (`feat/...`, `fix/...`).
+1. Fork the repo, create an isolated worktree and branch from `main` (`feat/...`, `fix/...`);
+   do not work directly in the shared checkout. For example:
+   `git worktree add -b feat/my-change ../mac-limits-tracker-my-change main`.
 2. Keep the change focused — one concern per PR, no drive-by reformatting.
 3. Add or update unit tests in `Tests/MacLimitsTrackerTests` for parser /
    model / ViewModel logic. Tests must stay pure-logic: no network, no
@@ -71,7 +73,9 @@ swift run -c release VerifyCli
   known traps are indexed there. Non-trivial findings from your change are
   welcome as short journal entries.
 - User-facing documentation (README, this file) is in English; journal entries
-  are in Russian.
+  are in Russian. If a change alters user-visible behavior, update the README in
+  the same PR. Record non-trivial architectural decisions and gotchas in the
+  journal in the same change rather than deferring them.
 
 ## Code of Conduct
 
