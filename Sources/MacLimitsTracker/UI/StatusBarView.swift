@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import MacLimitsTrackerCore
 
 /// Корень попапа статус-бара. Публичная точка входа для App.
@@ -11,10 +10,6 @@ import MacLimitsTrackerCore
 public struct StatusBarView: View {
     @ObservedObject var viewModel: LimitsViewModel
     let launchAtLogin: LaunchAtLoginManager
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.dismiss) private var dismissEnvironment
-
     init(viewModel: LimitsViewModel, launchAtLogin: LaunchAtLoginManager) {
         self.viewModel = viewModel
         self.launchAtLogin = launchAtLogin
@@ -23,7 +18,7 @@ public struct StatusBarView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             topBar
-            Group {
+            ScrollView {
                 switch viewModel.appTheme {
                 case .system:
                     SystemStatusView(viewModel: viewModel, launchAtLogin: launchAtLogin)
@@ -35,50 +30,38 @@ public struct StatusBarView: View {
                     TUIStatusView(viewModel: viewModel, launchAtLogin: launchAtLogin)
                 }
             }
+            .frame(maxHeight: .infinity)
+            PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
         }
+        .frame(minWidth: MenuBarPopupLayout.minWidth,
+               idealWidth: MenuBarPopupLayout.idealWidth,
+               maxHeight: MenuBarPopupLayout.maxHeight)
         .accessibilityIdentifier("statusBarPopup")
     }
 
     private var topBar: some View {
         HStack {
+            Text("Limits Tracker").font(.headline)
             Spacer()
-            Button {
-                dismissPopup()
-                DispatchQueue.main.async {
-                    openWindow(id: "main")
-                }
-            } label: {
-                Label("Open Limits Tracker", systemImage: "macwindow")
-                    .labelStyle(.titleAndIcon)
+            Text(PopupContentBuilder.updatedText(states: viewModel.states))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button { viewModel.refresh() } label: {
+                Image(systemName: viewModel.isRefreshing
+                      ? "arrow.triangle.2.circlepath.circle"
+                      : "arrow.clockwise")
             }
             .buttonStyle(.borderless)
-            .controlSize(.small)
-            .help("Open Limits Tracker in a regular window (⌘0)")
-            .accessibilityLabel("Open Limits Tracker in Window")
-            .keyboardShortcut("0", modifiers: .command)
-            Button {
-                dismissPopup()
-                DispatchQueue.main.async {
-                    openSettings()
-                }
-            } label: {
-                Label("Settings…", systemImage: "gearshape")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .help("Open Settings (⌘,)")
-            .accessibilityLabel("Open Settings")
-            .keyboardShortcut(",", modifiers: .command)
+            .disabled(viewModel.isRefreshing)
+            .help(viewModel.isRefreshing ? "Refreshing…" : "Refresh (⌘R)")
+            .accessibilityLabel("Refresh")
+            .keyboardShortcut("r", modifiers: .command)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 4)
     }
 
-    private func dismissPopup() {
-        NSApp.sendAction(#selector(NSPopover.performClose(_:)), to: nil, from: nil)
-        dismissEnvironment()
-        NSApp.keyWindow?.close()
-    }
 }
