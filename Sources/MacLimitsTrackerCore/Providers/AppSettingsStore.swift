@@ -15,7 +15,6 @@ public final class AppSettingsStore {
     private static let menuBarDisplayModeKey = "menuBarDisplayMode"
     private static let showDesktopWidgetKey = "showDesktopWidget"
     private static let autoRefreshEnabledKey = "autoRefreshEnabled"
-    private static let showUsageTrendsKey = "showUsageTrends"
     private static let showDailyBudgetKey = "showDailyBudget"
 
     public init(defaults: UserDefaults = .standard) {
@@ -80,16 +79,6 @@ public final class AppSettingsStore {
     public var autoRefreshEnabled: Bool {
         get { defaults.object(forKey: Self.autoRefreshEnabledKey) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Self.autoRefreshEnabledKey) }
-    }
-
-    /// Показ 7-дневных графиков тренда — глобально, одинаково для всех тем
-    /// и обеих поверхностей (bd mac-limits-tracker-gld.4). Дефолт true —
-    /// сохраняет текущий показ, пока пользователь явно не выключит.
-    /// object(forKey:) вместо bool(forKey:): отсутствующий ключ
-    /// отличим от сохранённого false.
-    public var showUsageTrends: Bool {
-        get { defaults.object(forKey: Self.showUsageTrendsKey) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Self.showUsageTrendsKey) }
     }
 
     public var showDailyBudget: Bool {

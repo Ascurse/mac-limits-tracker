@@ -8,6 +8,7 @@ public enum PopupRow: Equatable {
     case dailyBudget(DailyBudgetContent)
     case sparkline(SparklineContent)
     case burnRate(BurnRateContent)
+    case paceComparison(PaceComparisonContent)
     case cost(CostRowContent)
     case error(String)
     case recovery(ProviderRecoveryContent)
@@ -298,13 +299,14 @@ public enum PopupContentBuilder {
         now: Date = Date(),
         history: [UsageSample] = [],
         thresholds: SeverityThresholds = .standard,
+        surface: PopupContentSurface = .desktop,
         showTrends: Bool = true,
         showDailyBudget: Bool = true,
         calendar: Calendar = .current
     ) -> ProviderSectionContent {
         let resolved = SnapshotResolver.resolve(state)
         var rows = rows(for: state.descriptor, snapshot: resolved.snapshot, now: now, history: history,
-                        thresholds: thresholds, showTrends: showTrends,
+                        thresholds: thresholds, surface: surface, showTrends: showTrends,
                         showDailyBudget: showDailyBudget, calendar: calendar,
                         isStale: resolved.isStale)
         if resolved.isStale, let snapshot = resolved.snapshot, let error = resolved.error {
@@ -328,15 +330,16 @@ public enum PopupContentBuilder {
         history: (String) -> [UsageSample] = { _ in [] },
         thresholds: SeverityThresholds = .standard,
         costResult: CostEstimateResult? = nil,
+        surface: PopupContentSurface = .desktop,
         showTrends: Bool = true,
         showDailyBudget: Bool = true,
         calendar: Calendar = .current
     ) -> [ProviderSectionContent] {
         var result = states.map {
             section($0, now: now, history: history($0.descriptor.id), thresholds: thresholds,
-                    showTrends: showTrends, showDailyBudget: showDailyBudget, calendar: calendar)
+                    surface: surface, showTrends: showTrends, showDailyBudget: showDailyBudget, calendar: calendar)
         }
-        if let costResult { result.append(costSection(costResult)) }
+        if surface == .desktop, let costResult { result.append(costSection(costResult)) }
         return result
     }
 
@@ -414,6 +417,7 @@ public enum PopupContentBuilder {
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds,
+        surface: PopupContentSurface,
         showTrends: Bool,
         showDailyBudget: Bool,
         calendar: Calendar,
@@ -424,14 +428,14 @@ public enum PopupContentBuilder {
             return [.recovery(ProviderErrorRecoveryMapper.recover(rawError: e, providerName: descriptor.displayName))]
         }
 
-        var rows: [PopupRow] = [.detail(key: "Plan", value: snap.plan ?? "—")]
-        rows.append(contentsOf: usageRows(for: descriptor, snap, now: now, history: history,
-                                          thresholds: thresholds, showTrends: showTrends,
-                                          showDailyBudget: showDailyBudget, calendar: calendar,
-                                          isStale: isStale))
-        rows.append(contentsOf: snap.details.map { .detail(key: $0.key, value: $0.value) })
-        rows.append(contentsOf: renewalRows(snap, now: now))
-        return rows
+        let usageRows = usageRows(for: descriptor, snap, now: now, history: history,
+                                  thresholds: thresholds, surface: surface, showTrends: showTrends,
+                                  showDailyBudget: showDailyBudget, calendar: calendar,
+                                  isStale: isStale)
+        guard surface == .desktop else { return usageRows }
+        return [.detail(key: "Plan", value: snap.plan ?? "—")] + usageRows
+            + snap.details.map { .detail(key: $0.key, value: $0.value) }
+            + renewalRows(snap, now: now)
     }
 
     /// Окна + кредиты + ошибка rate-limit; либо usageError, либо «Loading usage…»,
@@ -442,6 +446,7 @@ public enum PopupContentBuilder {
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds,
+        surface: PopupContentSurface,
         showTrends: Bool,
         showDailyBudget: Bool,
         calendar: Calendar,
@@ -452,9 +457,10 @@ public enum PopupContentBuilder {
             return [.note("Loading usage…")]
         }
         var rows = windowRows(windows, now: now, history: history, thresholds: thresholds,
-                             showTrends: showTrends, showDailyBudget: showDailyBudget,
+                              surface: surface,
+                              showTrends: showTrends, showDailyBudget: showDailyBudget,
                              calendar: calendar, isStale: isStale)
-        if let bal = snap.creditsBalance, !bal.isEmpty {
+        if surface == .desktop, let bal = snap.creditsBalance, !bal.isEmpty {
             rows.append(.detail(key: "Credits", value: bal))
         }
         if let reached = snap.rateLimitReachedType {
@@ -476,6 +482,7 @@ public enum PopupContentBuilder {
         now: Date,
         history: [UsageSample],
         thresholds: SeverityThresholds,
+        surface: PopupContentSurface,
         showTrends: Bool,
         showDailyBudget: Bool,
         calendar: Calendar,
@@ -484,7 +491,13 @@ public enum PopupContentBuilder {
         let rangeStart = now.addingTimeInterval(-Self.trendRangeDays * 24 * 3600)
         let rangeEnd = now
 
-        return windows.flatMap { w -> [PopupRow] in
+        let orderedWindows = windows.enumerated().sorted { lhs, rhs in
+            let leftDuration = lhs.element.windowDurationMins ?? Int.max
+            let rightDuration = rhs.element.windowDurationMins ?? Int.max
+            return leftDuration == rightDuration ? lhs.offset < rhs.offset : leftDuration < rightDuration
+        }.map(\.element)
+
+        return orderedWindows.flatMap { w -> [PopupRow] in
             let labels = RateLimitWindowLabel.labels(forDurationMins: w.windowDurationMins)
             let row = windowRow(short: labels.short, long: labels.long,
                                 remaining: w.usedPercent.map { max(0, 100 - $0) },
@@ -494,6 +507,19 @@ public enum PopupContentBuilder {
             guard let usedPercent = w.usedPercent, let durationMins = w.windowDurationMins else { return [row] }
 
             var rows: [PopupRow] = [row]
+
+            if surface == .desktop, w.resetsAt != nil {
+                rows.append(.paceComparison(PaceComparisonPolicy.make(
+                    window: w,
+                    windowLabel: labels.long,
+                    burnRate: BurnRateCalculator.calculate(
+                        samples: history,
+                        windowMins: durationMins,
+                        currentUsedPercent: usedPercent,
+                        currentResetsAt: w.resetsAt,
+                        now: now),
+                    now: now)))
+            }
 
             if durationMins == 10080, showDailyBudget, !isStale,
                let dailyBudget = DailyBudgetCalculator.calculate(
@@ -508,7 +534,7 @@ public enum PopupContentBuilder {
                     displayText: "Today pace: ~\(percent)% of weekly limit")))
             }
 
-            if let burnRate = BurnRateCalculator.calculate(
+            if surface == .desktop, let burnRate = BurnRateCalculator.calculate(
                 samples: history,
                 windowMins: durationMins,
                 currentUsedPercent: usedPercent,
@@ -521,6 +547,8 @@ public enum PopupContentBuilder {
                     now: now
                 )))
             }
+
+            guard surface == .desktop else { return rows }
 
             let samples = history.filter {
                 $0.windowMins == durationMins && $0.fetchedAt >= rangeStart && $0.fetchedAt <= rangeEnd

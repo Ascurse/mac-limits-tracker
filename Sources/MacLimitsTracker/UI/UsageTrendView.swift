@@ -8,12 +8,119 @@ enum UsageTrendVariant: Equatable {
     case regular
 }
 
-extension ProviderOverviewSurface {
+extension PopupContentSurface {
     var trendVariant: UsageTrendVariant {
         switch self {
         case .menuBar: return .compact
         case .desktop: return .regular
         }
+    }
+}
+
+enum UsagePaceVariant: Equatable {
+    case compact
+    case regular
+}
+
+struct PaceComparisonTokens {
+    let accent: Color
+    let dim: Color
+    let track: Color
+    let warning: Color
+    let critical: Color
+    let font: Font
+}
+
+struct UsagePaceView: View {
+    let content: PaceComparisonContent
+    let tokens: PaceComparisonTokens
+    let variant: UsagePaceVariant
+
+    private var spacing: CGFloat { variant == .regular ? 6 : 3 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            paceBar(label: "Quota remaining", value: content.quotaRemainingPercent)
+            paceBar(label: "Time remaining", value: content.timeRemainingPercent)
+            Text(statusText)
+                .foregroundStyle(statusColor)
+            if let delta = content.paceDeltaPercent {
+                Text(String(format: "Pace buffer: %+.0f pp", delta))
+                    .foregroundStyle(tokens.dim)
+            }
+            if let resetAt = content.resetAt {
+                Text("Resets \(LimitsFormatting.resetText(resetsAt: resetAt))")
+                    .foregroundStyle(tokens.dim)
+            }
+        }
+        .font(tokens.font)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(content.windowLabel)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    @ViewBuilder
+    private func paceBar(label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .foregroundStyle(tokens.dim)
+            if let value {
+                ProgressView(value: value, total: 100)
+                    .progressViewStyle(.linear)
+                    .tint(tokens.accent)
+                Text(String(format: "%.0f%%", value))
+                    .monospacedDigit()
+                    .fixedSize()
+            } else {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(tokens.track)
+                Text("—")
+                    .fixedSize()
+            }
+        }
+    }
+
+    private var statusText: String {
+        switch content.status {
+        case .onPace:
+            return "On pace"
+        case .atRisk:
+            guard let forecastAt = content.forecastAt else { return "Likely to run out before reset" }
+            return "Likely to run out \(LimitsFormatting.resetText(resetsAt: forecastAt))"
+        case .collectingHistory:
+            return "Collecting history"
+        case .unavailable:
+            return "Usage unavailable"
+        }
+    }
+
+    private var statusColor: Color {
+        switch content.status {
+        case .onPace, .collectingHistory: return tokens.dim
+        case .atRisk: return tokens.critical
+        case .unavailable: return tokens.warning
+        }
+    }
+
+    private var accessibilityValue: String {
+        var parts: [String] = [statusText]
+        if let quota = content.quotaRemainingPercent {
+            parts.append(String(format: "quota %.0f percent", quota))
+        }
+        if let time = content.timeRemainingPercent {
+            parts.append(String(format: "time %.0f percent", time))
+        }
+        if let delta = content.paceDeltaPercent {
+            parts.append(String(format: "buffer %+.0f percentage points", delta))
+        }
+        if let resetAt = content.resetAt {
+            parts.append("reset \(LimitsFormatting.resetText(resetsAt: resetAt))")
+        }
+        if let forecastAt = content.forecastAt {
+            parts.append("forecast \(LimitsFormatting.resetText(resetsAt: forecastAt))")
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

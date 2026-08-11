@@ -29,7 +29,8 @@ struct DesktopWindowView: View {
                         history: viewModel.historySamples(providerId:),
                         thresholds: viewModel.severityThresholds,
                         costResult: viewModel.costEstimate,
-                        showTrends: viewModel.showUsageTrends,
+                        surface: .desktop,
+                        showTrends: false,
                         showDailyBudget: viewModel.showDailyBudget),
                     theme: viewModel.appTheme,
                     surface: .desktop)

@@ -28,7 +28,7 @@ The app has four surfaces backed by the same live state and persisted settings:
 
 - **Menu-bar popup** — always available from the gauge icon; optimized for a quick status check.
 - **Desktop window** — click **Open Limits Tracker** in the popup. In a bundled `.app`, **Cmd-0** or **Limits Tracker → Open Limits Tracker** opens or focuses the same singleton window.
-- **Settings** — click **Settings…** in the popup, use **Cmd-,**, or choose the standard app Settings command. The native Settings window exposes the same controls as the popup footer and the desktop window's **Settings** disclosure.
+- **Settings** — click **Settings…** in the popup, use **Cmd-,**, or choose the standard app Settings command. The native Settings window exposes the shared display and provider controls; the desktop window has the same **Settings** disclosure.
 - **Desktop widget** — enable **Desktop widget** from any settings surface. It is a separate non-activating panel that stays below normal windows and can appear on every Space.
 
 `MacLimitsTrackerApp` owns one shared `LimitsViewModel`; opening or closing a surface does not create another polling loop or reset provider state. The menu-bar popup and desktop window share the same `ProviderOverview` rules, while the widget keeps its intentionally compact rendering.
@@ -56,11 +56,9 @@ Both windows are the live, server-side rate-limit quotas, fetched from `GET http
 - A **Quota** row for the purchased, non-expiring credit pool (`usage.limit` / `.used` / `.remaining`) — this is a running balance, not a time window, so it's shown as a detail line rather than a progress window.
 - Usage is fetched live from `GET https://api.kimi.com/coding/v1/usages`; the OAuth access token is short-lived (~15 min) and refreshed automatically via `https://auth.kimi.com/api/oauth/token`, rewriting the credentials file in place.
 
-Under each window row, the popup can render a **7-day usage trend** built from locally recorded history samples (see [Usage history](#usage-history)). The trend is enabled by default and can be replaced with a compact `7d: start% → current%` summary from the display settings.
+The desktop window replaces the historical graph with a **pace comparison** for each valid window: quota remaining versus time remaining, with `On pace`, `Likely to run out`, or `Collecting history` status. The menu-bar popup keeps provider state, remaining windows, reset text, recovery actions, and the optional weekly daily-budget summary; detailed account, credits, cost, trend, and pace rows remain on the desktop surface.
 
-For weekly windows, the popup also shows a **daily budget** by default: the approximate percentage of the remaining weekly quota to use today to stay on pace for the reset. It is hidden when the weekly data is stale or the calculation has no reset time.
-
-The popup also includes a **Cost estimate** section based on locally readable Claude Code and Codex usage logs. It is an estimate, not provider billing: incomplete pricing is shown as a lower bound, and unavailable logs are reported explicitly.
+The desktop window also includes a **Cost estimate** section based on locally readable Claude Code and Codex usage logs. It is an estimate, not provider billing: incomplete pricing is shown as a lower bound, and unavailable logs are reported explicitly.
 
 Hovering the menu-bar icon shows a tooltip with every enabled provider's plan and window remaining %, e.g. `Claude: Max · 5h 78% · weekly 95% · Codex: Plus · 5h 99% · weekly 82%`, so you get the headline state without opening the popup.
 
@@ -73,11 +71,11 @@ The popup supports four themes, switchable from the footer picker:
 - **Phosphor** — monochrome green CRT with `█▓▒` bars and severity markers; warning and critical remain distinguishable without relying on color.
 - **TUI** — htop-style panels with `[||||··]` gauges, tinted normal / warning / critical by severity.
 
-The choice is persisted in `UserDefaults` (`appTheme`). The menu-bar icon/label and the desktop widget are never tinted by severity, regardless of theme.
+The choice is persisted in `UserDefaults` (`appTheme`) and changed from the Settings surfaces. The menu-bar icon/label and the desktop widget are never tinted by severity, regardless of theme.
 
 ## Usage history
 
-Every successful refresh appends one sample per (provider, window) to a local history file (`history.json` in `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`), deduplicating unchanged values and pruning anything older than 7 days. The popup's trends (see [What it shows](#what-it-shows)) use up to 7 days of that history; the desktop widget does not show trends or daily-budget rows.
+Every successful refresh appends one sample per (provider, window) to a local history file (`history.json` in `~/Library/Application Support/dev.ascurse.MacLimitsTracker/`), deduplicating unchanged values and pruning anything older than 7 days. The history remains available to calculate pace forecasts; the desktop widget does not show pace rows or historical charts.
 
 ## Notifications
 
@@ -92,7 +90,7 @@ Notifications require the app to run as a proper `.app` bundle (`./make-app.sh`)
 
 ## Settings
 
-The controls below are shared by the popup footer, the desktop window's **Settings** disclosure and the native Settings window. Changes appear in every surface immediately and persist across restarts:
+The controls below are shared by the desktop window's **Settings** disclosure and the native Settings window. The menu-bar popup's **Settings…** action opens that native surface. Changes appear in every surface immediately and persist across restarts:
 
 | Control | Options | Default |
 |---|---|---|
@@ -101,7 +99,6 @@ The controls below are shared by the popup footer, the desktop window's **Settin
 | Refresh every | 30 sec / 1 min / 5 min / 15 min | 5 min |
 | Warning at | 20 / 30 / 40 / 50 / 60% remaining | 40% |
 | Critical at | 5 / 10 / 15 / 20 / 25% remaining (below warning) | 15% |
-| Show 7-day usage trends | on/off | on |
 | Show daily budget | on/off | on |
 | Providers | per-provider enable + reorder (▲/▼) | all enabled, registry order |
 | Auto-refresh | on/off | on |

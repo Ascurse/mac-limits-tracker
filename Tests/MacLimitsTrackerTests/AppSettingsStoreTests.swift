@@ -114,22 +114,6 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertFalse(AppSettingsStore(defaults: defaults).autoRefreshEnabled)
     }
 
-    // MARK: - ShowUsageTrends (bd mac-limits-tracker-gld.4)
-
-    func test_noSavedValue_showUsageTrendsDefaultsToTrue() {
-        XCTAssertTrue(AppSettingsStore(defaults: defaults).showUsageTrends)
-    }
-
-    func test_showUsageTrends_roundTripsAcrossStoreInstances() {
-        AppSettingsStore(defaults: defaults).showUsageTrends = false
-        XCTAssertFalse(AppSettingsStore(defaults: defaults).showUsageTrends)
-    }
-
-    func test_storedFalseShowUsageTrends_doesNotFallBackToTrue() {
-        defaults.set(false, forKey: "showUsageTrends")
-        XCTAssertFalse(AppSettingsStore(defaults: defaults).showUsageTrends)
-    }
-
     func test_noSavedValue_showDailyBudgetDefaultsToTrue() {
         XCTAssertTrue(AppSettingsStore(defaults: defaults).showDailyBudget)
     }
@@ -369,43 +353,6 @@ final class LimitsViewModelDisplaySettingsTests: XCTestCase {
     func test_setShowDesktopWidget_persistsAcrossViewModelInstances() {
         makeVM().setShowDesktopWidget(true)
         XCTAssertTrue(makeVM().showDesktopWidget)
-    }
-
-    // MARK: - showUsageTrends
-
-    func test_noSavedShowUsageTrends_viewModelDefaultsToTrue() {
-        XCTAssertTrue(makeVM().showUsageTrends)
-    }
-
-    func test_savedShowUsageTrends_isLoadedOnInit() {
-        AppSettingsStore(defaults: defaults).showUsageTrends = false
-        XCTAssertFalse(makeVM().showUsageTrends)
-    }
-
-    func test_setShowUsageTrends_updatesPublishedValue() {
-        let vm = makeVM()
-        vm.setShowUsageTrends(false)
-        XCTAssertFalse(vm.showUsageTrends)
-    }
-
-    func test_setShowUsageTrends_persistsAcrossViewModelInstances() {
-        makeVM().setShowUsageTrends(false)
-        XCTAssertFalse(makeVM().showUsageTrends)
-        XCTAssertFalse(AppSettingsStore(defaults: defaults).showUsageTrends)
-    }
-
-    /// Чисто presentation-переключатель: смена настройки не должна дёргать
-    /// сеть (refresh) — states и счётчик fetch() остаются нетронутыми.
-    func test_setShowUsageTrends_doesNotTriggerRefresh() {
-        let counter = _FetchCounter()
-        let vm = LimitsViewModel(
-            providers: [_CountingProvider(id: "test", counter: counter)],
-            settingsStore: ProviderSettingsStore(defaults: defaults),
-            appSettingsStore: AppSettingsStore(defaults: defaults),
-            historyStore: historyStore
-        )
-        vm.setShowUsageTrends(false)
-        XCTAssertEqual(counter.value, 0)
     }
 
     func test_showDailyBudget_isLoadedAndPersistsWithoutRefresh() {
