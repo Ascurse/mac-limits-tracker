@@ -49,15 +49,6 @@ struct DisplaySettingsSection: View {
             .accessibilityLabel("Menu bar")
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Toggle("Show 7-day usage trends", isOn: Binding(
-                get: { viewModel.showUsageTrends },
-                set: { viewModel.setShowUsageTrends($0) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(controlSize)
-            .accessibilityLabel("Show 7-day usage trends")
-            .frame(maxWidth: .infinity, alignment: .leading)
-
             Toggle("Show daily budget", isOn: Binding(
                 get: { viewModel.showDailyBudget },
                 set: { viewModel.setShowDailyBudget($0) }
