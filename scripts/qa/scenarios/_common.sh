@@ -217,39 +217,28 @@ end tell' 5)"
     [[ "$output" == "true" ]]
 }
 
-# Toggle the first matching provider row in the Settings window.
-# Searches for a static text containing the provider name, then clicks the first
-# checkbox in the same row. Returns 0 on success.
 _qa_toggle_provider_in_settings() {
     local provider="$1"
     local provider_id
-    local provider_index
     local output
     case "$provider" in
-        "Kimi Code") provider_id="kimi" ;;
+        Kimi|"Kimi Code") provider_id="kimi" ;;
         Claude) provider_id="claude" ;;
         Codex) provider_id="codex" ;;
         *) provider_id="$provider" ;;
     esac
-    provider_index="$(defaults read dev.ascurse.MacLimitsTracker 'providerSettings.order' 2>/dev/null | awk -v id="$provider_id" '$1 == id "," || $1 == id { print NR - 1; exit }')"
-    [[ -n "$provider_index" ]] || provider_index=1
     output="$(_se "tell application \"System Events\" to tell process \"MacLimitsTracker\"
-  repeat with attempt from 1 to 10
-    try
-      set settingsWin to first window whose (value of attribute \"AXTitle\") contains \"Settings\"
-      set targetToggle to checkbox $provider_index of group 3 of scroll area 1 of group 1 of settingsWin
-      click targetToggle
-      return \"toggled\"
-    end try
-    delay 0.3
-  end repeat
   try
     set settingsWin to first window whose (value of attribute \"AXTitle\") contains \"Settings\"
-    try
-      set targetToggle to first UI element of entire contents of settingsWin whose (value of attribute \"AXIdentifier\") is \"provider-toggle-$provider_id\"
-      click targetToggle
-      return \"toggled\"
-    end try
+    set allElements to entire contents of settingsWin
+    repeat with candidate in allElements
+      try
+        if (value of attribute \"AXIdentifier\" of candidate) is \"provider-toggle-$provider_id\" then
+          click candidate
+          return \"toggled\"
+        end if
+      end try
+    end repeat
     set targetText to first static text of settingsWin whose value contains \"$provider\"
     set rowGroup to parent of targetText
     try
@@ -291,7 +280,7 @@ _qa_count_defaults_disabled() {
 # Map provider id to the display name used in the popup/main window.
 _qa_provider_display_name() {
     case "$1" in
-        kimi) echo "Kimi Code" ;;
+        kimi) echo "Kimi" ;;
         claude) echo "Claude Code" ;;
         codex) echo "Codex" ;;
         *) echo "$1" ;;
