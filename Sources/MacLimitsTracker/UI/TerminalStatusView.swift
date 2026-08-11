@@ -9,47 +9,19 @@ struct TerminalStatusView: View {
     private let mono = Font.system(size: 11, design: .monospaced)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            ProviderOverview(
-                sections: PopupContentBuilder.sections(
-                    viewModel.states,
-                    history: viewModel.historySamples(providerId:),
-                    thresholds: viewModel.severityThresholds,
-                    costResult: viewModel.costEstimate,
-                    showTrends: viewModel.showUsageTrends,
-                    showDailyBudget: viewModel.showDailyBudget),
-                theme: .terminal,
-                surface: .menuBar)
-            Rectangle().fill(TerminalPalette.track).frame(height: 1)
-            PopupFooter(viewModel: viewModel, launchAtLogin: launchAtLogin)
-                .tint(TerminalPalette.cyan)
-        }
-        .font(mono)
-        .foregroundStyle(TerminalPalette.fg)
-        .padding(16)
-        .frame(minWidth: 320, idealWidth: 340)
-        .background(TerminalPalette.bg)
-        .environment(\.colorScheme, .dark) // системные контролы читаемы на тёмном фоне
-    }
-
-    private var header: some View {
-        HStack {
-            Text("limits-tracker").foregroundStyle(TerminalPalette.cyan)
-            Spacer()
-            Text(PopupContentBuilder.updatedText(states: viewModel.states))
-                .foregroundStyle(TerminalPalette.dim)
-            Button {
-                viewModel.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(viewModel.isRefreshing ? TerminalPalette.dim : TerminalPalette.cyan)
-            }
-            .buttonStyle(.borderless)
-            .disabled(viewModel.isRefreshing)
-            .help(viewModel.isRefreshing ? "Refreshing…" : "Refresh (⌘R)")
-            .accessibilityLabel("Refresh")
-            .keyboardShortcut("r", modifiers: .command)
-        }
+        ProviderOverview(
+            sections: PopupContentBuilder.sections(
+                viewModel.states,
+                history: viewModel.historySamples(providerId:),
+                thresholds: viewModel.severityThresholds,
+                costResult: viewModel.costEstimate,
+                surface: .menuBar),
+            theme: .terminal,
+            surface: .menuBar)
+            .font(mono)
+            .foregroundStyle(TerminalPalette.fg)
+            .padding(16)
+            .background(TerminalPalette.bg)
+            .environment(\.colorScheme, .dark)
     }
 }

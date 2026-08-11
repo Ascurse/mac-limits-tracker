@@ -3,10 +3,7 @@ import MacLimitsTrackerCore
 
 /// Поверхность, на которой рендерится сводка провайдеров: попап меню-бара
 /// или desktop-виджет. Плотность — только layout, не бизнес-правила.
-enum ProviderOverviewSurface {
-    case menuBar
-    case desktop
-}
+typealias ProviderOverviewSurface = PopupContentSurface
 
 /// Чистая сводка провайдеров: входом являются готовые секции и тема;
 /// transport/polling/UserDefaults сюда не попадают.
@@ -173,15 +170,17 @@ struct SystemOverviewBody: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Daily budget: \(budget.displayText)")
-        case .sparkline(let spark):
-            UsageTrendView(content: spark,
-                           tokens: systemTrendTokens(accent: accent),
-                           variant: surface.trendVariant,
-                           showHeader: false)
-        case .burnRate(let burn):
-            Text(burn.text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        case .paceComparison(let pace):
+            UsagePaceView(content: pace,
+                          tokens: PaceComparisonTokens(accent: accent,
+                                                       dim: .secondary,
+                                                       track: .secondary.opacity(0.25),
+                                                       warning: .orange,
+                                                       critical: .red,
+                                                       font: .caption),
+                          variant: surface == .desktop ? .regular : .compact)
+        case .sparkline, .burnRate:
+            EmptyView()
         case .cost(let c):
             detailRow(c.label, c.valueText)
             Text(c.footnoteText)
@@ -318,17 +317,18 @@ struct TerminalOverviewBody: View {
                 .foregroundStyle(Palette.dim)
                 .padding(.leading, 26)
                 .accessibilityLabel("Daily budget: \(budget.displayText)")
-        case .sparkline(let spark):
-            UsageTrendView(content: spark,
-                           tokens: terminalTrendTokens(accent: accent),
-                           variant: surface.trendVariant,
-                           showHeader: false)
+        case .paceComparison(let pace):
+            UsagePaceView(content: pace,
+                          tokens: PaceComparisonTokens(accent: Palette.cyan,
+                                                       dim: Palette.dim,
+                                                       track: Palette.track,
+                                                       warning: Palette.warning,
+                                                       critical: Palette.critical,
+                                                       font: desktopFont ?? .caption),
+                          variant: surface == .desktop ? .regular : .compact)
                 .padding(.leading, 26)
-        case .burnRate(let burn):
-            Text(burn.text)
-                .font(.caption)
-                .foregroundStyle(terminalPaceColor(burn.pace))
-                .padding(.leading, 26)
+        case .sparkline, .burnRate:
+            EmptyView()
         case .cost(let c):
             VStack(alignment: .leading, spacing: 2) {
                 CompactKeyValueRow(key: c.label.lowercased(), value: c.valueText,
@@ -488,17 +488,18 @@ struct PhosphorOverviewBody: View {
                 .foregroundStyle(Palette.mid)
                 .padding(.leading, 26)
                 .accessibilityLabel("Daily budget: \(budget.displayText)")
-        case .sparkline(let spark):
-            UsageTrendView(content: spark,
-                           tokens: phosphorTrendTokens,
-                           variant: surface.trendVariant,
-                           showHeader: false)
+        case .paceComparison(let pace):
+            UsagePaceView(content: pace,
+                          tokens: PaceComparisonTokens(accent: Palette.bright,
+                                                       dim: Palette.mid,
+                                                       track: Palette.dim,
+                                                       warning: Palette.mid,
+                                                       critical: Palette.heading,
+                                                       font: desktopFont ?? .caption),
+                          variant: surface == .desktop ? .regular : .compact)
                 .padding(.leading, 26)
-        case .burnRate(let burn):
-            Text(burn.text)
-                .font(.caption)
-                .foregroundStyle(Palette.mid)
-                .padding(.leading, 26)
+        case .sparkline, .burnRate:
+            EmptyView()
         case .cost(let c):
             VStack(alignment: .leading, spacing: 1) {
                 HStack {
@@ -633,17 +634,18 @@ struct TUIOverviewBody: View {
                 .foregroundStyle(Palette.dim)
                 .padding(.leading, 24)
                 .accessibilityLabel("Daily budget: \(budget.displayText)")
-        case .sparkline(let spark):
-            UsageTrendView(content: spark,
-                           tokens: tuiTrendTokens,
-                           variant: surface.trendVariant,
-                           showHeader: false)
+        case .paceComparison(let pace):
+            UsagePaceView(content: pace,
+                          tokens: PaceComparisonTokens(accent: Palette.normal,
+                                                       dim: Palette.dim,
+                                                       track: Palette.border,
+                                                       warning: Palette.warning,
+                                                       critical: Palette.critical,
+                                                       font: desktopFont ?? .caption),
+                          variant: surface == .desktop ? .regular : .compact)
                 .padding(.leading, 24)
-        case .burnRate(let burn):
-            Text("[\(burn.text)]")
-                .font(.caption)
-                .foregroundStyle(tuiPaceColor(burn.pace))
-                .padding(.leading, 24)
+        case .sparkline, .burnRate:
+            EmptyView()
         case .cost(let c):
             VStack(alignment: .leading, spacing: 1) {
                 CompactKeyValueRow(key: c.label.lowercased(), value: c.valueText,
