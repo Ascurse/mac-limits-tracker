@@ -18,20 +18,25 @@ open_settings_window
 # Discover the provider settings structure before toggling.
 dump_ax_tree ".*Settings.*" "ax-settings-providers"
 
-# Prefer Kimi; fall back to Claude or Codex if Kimi is not available in UI.
-provider_name="Kimi"
-provider_id="kimi"
+provider_name="Claude"
+provider_id="claude"
 if ! _qa_toggle_provider_in_settings "$provider_name"; then
-    log_action "disable-enable: Kimi toggle failed, falling back to Claude"
-    provider_name="Claude"
-    provider_id="claude"
+    log_action "disable-enable: Claude toggle failed, falling back to Codex"
+    provider_name="Codex"
+    provider_id="codex"
     if ! _qa_toggle_provider_in_settings "$provider_name"; then
-        log_action "disable-enable: Claude toggle failed, falling back to Codex"
-        provider_name="Codex"
-        provider_id="codex"
+        log_action "disable-enable: Codex toggle failed, falling back to Kimi"
+        provider_name="Kimi"
+        provider_id="kimi"
         if ! _qa_toggle_provider_in_settings "$provider_name"; then
             _qa_fail "toggle_provider" "could not toggle any provider row in Settings"
         fi
+    fi
+fi
+
+if [[ "$(_qa_count_defaults_disabled "$provider_id")" -eq 0 ]]; then
+    if ! _qa_toggle_provider_in_settings "$provider_name"; then
+        _qa_fail "disable_provider" "could not disable provider $provider_name after state normalization"
     fi
 fi
 
