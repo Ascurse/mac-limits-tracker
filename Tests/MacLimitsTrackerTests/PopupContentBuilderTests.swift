@@ -183,9 +183,15 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
     func test_windows_remainingIsInverseOfUtilization() {
         let usage = ClaudeUsage(fiveHour: window(28), sevenDay: window(69))
         let s = section(makeStatus(usage: usage))
-        guard case .window(let fh) = s.rows[1], case .window(let wk) = s.rows[2] else {
+        let windows = s.rows.compactMap { row -> WindowContent? in
+            guard case .window(let content) = row else { return nil }
+            return content
+        }
+        guard windows.count == 2 else {
             return XCTFail("ожидались окна, rows: \(s.rows)")
         }
+        let fh = windows[0]
+        let wk = windows[1]
         XCTAssertEqual(fh.shortLabel, "5h")
         XCTAssertEqual(fh.longLabel, "5h")
         XCTAssertEqual(fh.remainingPercent, 72)
@@ -217,9 +223,15 @@ final class PopupContentBuilderClaudeTests: XCTestCase {
         let usage = ClaudeUsage(fiveHour: window(50, resetsAt: Date().addingTimeInterval(7200)),
                                 sevenDay: window(50))
         let s = section(makeStatus(usage: usage))
-        guard case .window(let fh) = s.rows[1], case .window(let wk) = s.rows[2] else {
+        let windows = s.rows.compactMap { row -> WindowContent? in
+            guard case .window(let content) = row else { return nil }
+            return content
+        }
+        guard windows.count == 2 else {
             return XCTFail("\(s.rows)")
         }
+        let fh = windows[0]
+        let wk = windows[1]
         // Точный текст зависит от локали — проверяем только наличие.
         XCTAssertNotNil(fh.resetText)
         XCTAssertNil(wk.resetText)
@@ -839,9 +851,25 @@ final class PopupContentBuilderDailyBudgetTests: XCTestCase {
                                     resetsAt: now.addingTimeInterval(86_400))
         let section = PopupContentBuilder.section(state(windows: [weekly]), now: now,
                                                   showDailyBudget: true, calendar: utcCalendar())
-        XCTAssertEqual(section.rows.count, 3)
-        guard case .window = section.rows[1], case .dailyBudget = section.rows[2] else {
+        XCTAssertEqual(section.rows.count, 4)
+        guard case .window = section.rows[1], case .paceComparison = section.rows[2],
+              case .dailyBudget = section.rows[3] else {
             return XCTFail("daily budget must follow the weekly window: \(section.rows)")
+        }
+        XCTAssertNotNil(dailyBudget(in: section))
+    }
+
+    func test_freshWeeklyWindow_addsDailyBudgetOnMenuBarSurface() throws {
+        let weekly = SnapshotWindow(windowDurationMins: 10080, usedPercent: 41,
+                                    resetsAt: now.addingTimeInterval(86_400))
+        let section = PopupContentBuilder.section(
+            state(windows: [weekly]), now: now, surface: .menuBar,
+            showDailyBudget: true, calendar: utcCalendar())
+
+        XCTAssertEqual(section.rows.count, 2)
+        guard section.rows.count == 2,
+              case .window = section.rows[0], case .dailyBudget = section.rows[1] else {
+            return XCTFail("daily budget must follow the weekly window on the menu-bar surface: \(section.rows)")
         }
         XCTAssertNotNil(dailyBudget(in: section))
     }
@@ -852,7 +880,7 @@ final class PopupContentBuilderDailyBudgetTests: XCTestCase {
         let section = PopupContentBuilder.section(state(windows: [weekly]), now: now,
                                                   showDailyBudget: false, calendar: utcCalendar())
         XCTAssertNil(dailyBudget(in: section))
-        XCTAssertEqual(section.rows.count, 2)
+        XCTAssertEqual(section.rows.count, 3)
     }
 
     func test_onlyFiveHourWindow_omitsRow() {
@@ -893,6 +921,63 @@ final class PopupContentBuilderDailyBudgetTests: XCTestCase {
         let section = PopupContentBuilder.section(state(windows: [weekly]), now: now,
                                                   calendar: utcCalendar())
         XCTAssertEqual(try XCTUnwrap(dailyBudget(in: section)).budgetPercent, 0)
+    }
+}
+
+final class PopupContentBuilderSurfaceTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 2_000_000)
+
+    private func state() -> ProviderState {
+        let snapshot = LimitsSnapshot(
+            loggedIn: true,
+            plan: "plus",
+            windows: [
+                SnapshotWindow(windowDurationMins: 10080, usedPercent: 40, resetsAt: now.addingTimeInterval(86_400)),
+                SnapshotWindow(windowDurationMins: 300, usedPercent: 20, resetsAt: now.addingTimeInterval(3_600))
+            ],
+            creditsBalance: "12",
+            rateLimitReachedType: "primary",
+            details: [SnapshotDetail(key: "Account", value: "user@example.com")],
+            daysUntilRenewal: 3,
+            renewalDate: now.addingTimeInterval(3 * 86_400),
+            usageError: nil,
+            providerError: nil,
+            fetchedAt: now
+        )
+        return ProviderState(descriptor: claudeDescriptor, snapshot: snapshot)
+    }
+
+    func test_desktop_ordersWindowsAndAddsPaceRows() {
+        let rows = PopupContentBuilder.section(state(), now: now, surface: .desktop).rows
+        let windowLabels = rows.compactMap { row -> String? in
+            guard case .window(let content) = row else { return nil }
+            return content.shortLabel
+        }
+        let paceRows = rows.compactMap { row -> PaceComparisonContent? in
+            guard case .paceComparison(let content) = row else { return nil }
+            return content
+        }
+
+        XCTAssertEqual(windowLabels, ["5h", "wk"])
+        XCTAssertEqual(paceRows.map(\.windowDurationMins), [300, 10080])
+    }
+
+    func test_menuBarOmitsDetailAndTechnicalRows() {
+        let rows = PopupContentBuilder.section(state(), now: now, surface: .menuBar).rows
+
+        XCTAssertFalse(rows.contains { row in
+            switch row {
+            case .detail, .burnRate, .sparkline, .paceComparison, .cost:
+                return true
+            case .dailyBudget:
+                return false
+            case .window, .error, .recovery, .note:
+                return false
+            }
+        })
+        XCTAssertTrue(rows.contains { if case .dailyBudget = $0 { return true }; return false })
+        XCTAssertTrue(rows.contains { if case .window = $0 { return true }; return false })
+        XCTAssertTrue(rows.contains(.error("rate limit reached: primary")))
     }
 }
 
