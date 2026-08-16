@@ -507,17 +507,18 @@ public enum PopupContentBuilder {
             guard let usedPercent = w.usedPercent, let durationMins = w.windowDurationMins else { return [row] }
 
             var rows: [PopupRow] = [row]
+            let burnRate = BurnRateCalculator.calculate(
+                samples: history,
+                windowMins: durationMins,
+                currentUsedPercent: usedPercent,
+                currentResetsAt: w.resetsAt,
+                now: now)
 
-            if surface == .desktop, w.resetsAt != nil {
+            if w.resetsAt != nil {
                 rows.append(.paceComparison(PaceComparisonPolicy.make(
                     window: w,
                     windowLabel: labels.long,
-                    burnRate: BurnRateCalculator.calculate(
-                        samples: history,
-                        windowMins: durationMins,
-                        currentUsedPercent: usedPercent,
-                        currentResetsAt: w.resetsAt,
-                        now: now),
+                    burnRate: burnRate,
                     now: now)))
             }
 
@@ -534,13 +535,7 @@ public enum PopupContentBuilder {
                     displayText: "Today pace: ~\(percent)% of weekly limit")))
             }
 
-            if surface == .desktop, let burnRate = BurnRateCalculator.calculate(
-                samples: history,
-                windowMins: durationMins,
-                currentUsedPercent: usedPercent,
-                currentResetsAt: w.resetsAt,
-                now: now
-            ) {
+            if surface == .desktop, let burnRate {
                 rows.append(.burnRate(LimitsFormatting.burnRateContent(
                     burnRate: burnRate,
                     shortLabel: labels.short,

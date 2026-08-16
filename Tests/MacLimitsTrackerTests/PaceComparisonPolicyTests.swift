@@ -70,4 +70,42 @@ final class PaceComparisonPolicyTests: XCTestCase {
 
         XCTAssertEqual(result.status, .onPace)
     }
+
+    func test_onPace_compactTextExplainsRemainingAndReset() {
+        let window = SnapshotWindow(windowDurationMins: 100, usedPercent: 20,
+                                    resetsAt: now.addingTimeInterval(50 * 60))
+        let burn = BurnRate(usedPercentPerHour: 1, exhaustionDate: now.addingTimeInterval(50 * 60), windowMins: 100)
+        let result = PaceComparisonPolicy.make(window: window, windowLabel: "Week", burnRate: burn, now: now)
+
+        let text = result.compactText(now: now)
+
+        XCTAssertTrue(text.contains("On pace"))
+        XCTAssertTrue(text.contains("80% left"))
+        XCTAssertTrue(text.contains("reset"))
+        XCTAssertFalse(text.contains("\n"))
+    }
+
+    func test_atRisk_compactTextSuggestsSwitchOrWait() {
+        let reset = now.addingTimeInterval(100 * 60)
+        let window = SnapshotWindow(windowDurationMins: 100, usedPercent: 20, resetsAt: reset)
+        let burn = BurnRate(usedPercentPerHour: 1, exhaustionDate: reset.addingTimeInterval(-1), windowMins: 100)
+        let result = PaceComparisonPolicy.make(window: window, windowLabel: "Week", burnRate: burn, now: now)
+
+        let text = result.compactText(now: now)
+
+        XCTAssertTrue(text.contains("At risk"))
+        XCTAssertTrue(text.contains("switch or wait"))
+        XCTAssertFalse(text.contains("\n"))
+    }
+
+    func test_collectingHistory_compactTextDoesNotInventForecast() {
+        let window = SnapshotWindow(windowDurationMins: 100, usedPercent: 20,
+                                    resetsAt: now.addingTimeInterval(50 * 60))
+        let result = PaceComparisonPolicy.make(window: window, windowLabel: "Week", burnRate: nil, now: now)
+
+        let text = result.compactText(now: now)
+
+        XCTAssertTrue(text.contains("Collecting history"))
+        XCTAssertFalse(text.contains("runs out"))
+    }
 }

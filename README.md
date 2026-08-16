@@ -56,7 +56,7 @@ Both windows are the live, server-side rate-limit quotas, fetched from `GET http
 - A **Quota** row for the purchased, non-expiring credit pool (`usage.limit` / `.used` / `.remaining`) — this is a running balance, not a time window, so it's shown as a detail line rather than a progress window.
 - Usage is fetched live from `GET https://api.kimi.com/coding/v1/usages`; the OAuth access token is short-lived (~15 min) and refreshed automatically via `https://auth.kimi.com/api/oauth/token`, rewriting the credentials file in place.
 
-The desktop window replaces the historical graph with a **pace comparison** for each valid window: quota remaining versus time remaining, with `On pace`, `Likely to run out`, or `Collecting history` status. The menu-bar popup keeps provider state, remaining windows, reset text, recovery actions, and the optional weekly daily-budget summary; detailed account, credits, cost, trend, and pace rows remain on the desktop surface.
+The desktop window replaces the historical graph with a **pace comparison** for each valid window: quota remaining versus time remaining, with `On pace`, `Likely to run out`, or `Collecting history` status. The menu-bar popup also adds one compact pace line per valid window, showing whether the current pace is safe, the remaining quota, the reset/forecast, and `switch or wait` guidance when the window is at risk. Detailed quota-vs-time bars, burn rate, account, credits, cost, and trend rows remain on the desktop surface.
 
 The desktop window also includes a **Cost estimate** section based on locally readable Claude Code and Codex usage logs. It is an estimate, not provider billing: incomplete pricing is shown as a lower bound, and unavailable logs are reported explicitly.
 

@@ -19,7 +19,14 @@ Lightweight ADR: архитектурные и технические решен
 
 ---
 
-## 2026-08-11 — Menu-bar и desktop получили разные typed presentation surfaces
+## 2026-08-17 — Menu-bar получает компактный совет по темпу
+
+**Контекст:** menu-bar уже показывал остаток и reset, но не отвечал на главный оперативный вопрос: текущий темп безопасен или пора переключиться.
+**Решение:** для каждого валидного окна menu-bar получает одну компактную pace-строку с остатком, reset/forecast и `switch or wait` при риске; desktop сохраняет подробное сравнение quota-versus-time и burn rate.
+**Почему:** одна строка остаётся glanceable и использует существующие `PaceComparisonPolicy` и typed surface-контракт, без новых графиков, API или настроек.
+**Последствия:** menu-bar стал actionable-поверхностью для текущего темпа; полные бары и технические детали по-прежнему требуют desktop-окна.
+
+## 2026-08-11 — Menu-bar и desktop получили разные typed presentation surfaces [пересмотрено: 2026-08-17]
 
 **Контекст:** popup дублировал detail-контент desktop-окна и показывал график, daily budget, burn-rate и cost rows, хотя эти данные нужны для подробного просмотра.
 **Решение:** Core формирует `.menuBar` и `.desktop` секции до theme renderer. Menu-bar оставляет состояние, окна, reset, recovery и weekly daily-budget summary; desktop дополнительно получает typed pace comparison с quota/time bars, а старый trend toggle больше не является пользовательской настройкой.

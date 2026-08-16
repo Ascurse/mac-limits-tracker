@@ -39,18 +39,27 @@ struct UsagePaceView: View {
     private var spacing: CGFloat { variant == .regular ? 6 : 3 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            paceBar(label: "Quota remaining", value: content.quotaRemainingPercent)
-            paceBar(label: "Time remaining", value: content.timeRemainingPercent)
-            Text(statusText)
-                .foregroundStyle(statusColor)
-            if let delta = content.paceDeltaPercent {
-                Text(String(format: "Pace buffer: %+.0f pp", delta))
-                    .foregroundStyle(tokens.dim)
-            }
-            if let resetAt = content.resetAt {
-                Text("Resets \(LimitsFormatting.resetText(resetsAt: resetAt))")
-                    .foregroundStyle(tokens.dim)
+        Group {
+            if variant == .compact {
+                Text(content.compactText())
+                    .foregroundStyle(statusColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            } else {
+                VStack(alignment: .leading, spacing: spacing) {
+                    paceBar(label: "Quota remaining", value: content.quotaRemainingPercent)
+                    paceBar(label: "Time remaining", value: content.timeRemainingPercent)
+                    Text(statusText)
+                        .foregroundStyle(statusColor)
+                    if let delta = content.paceDeltaPercent {
+                        Text(String(format: "Pace buffer: %+.0f pp", delta))
+                            .foregroundStyle(tokens.dim)
+                    }
+                    if let resetAt = content.resetAt {
+                        Text("Resets \(LimitsFormatting.resetText(resetsAt: resetAt))")
+                            .foregroundStyle(tokens.dim)
+                    }
+                }
             }
         }
         .font(tokens.font)
@@ -104,6 +113,10 @@ struct UsagePaceView: View {
     }
 
     private var accessibilityValue: String {
+        if variant == .compact {
+            return content.compactText()
+        }
+
         var parts: [String] = [statusText]
         if let quota = content.quotaRemainingPercent {
             parts.append(String(format: "quota %.0f percent", quota))

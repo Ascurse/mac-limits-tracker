@@ -49,7 +49,7 @@ public enum LimitsFormatting {
         }
     }
 
-    private static func timeToExhaustionText(_ interval: TimeInterval) -> String {
+    public static func timeToExhaustionText(_ interval: TimeInterval) -> String {
         let totalMinutes = max(0, interval / 60)
         if totalMinutes < 60 {
             return "in \(Int(totalMinutes))m"
@@ -88,4 +88,3 @@ public enum LimitsFormatting {
         return f
     }()
 }
-

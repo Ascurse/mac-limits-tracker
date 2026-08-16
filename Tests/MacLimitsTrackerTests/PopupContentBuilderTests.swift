@@ -866,9 +866,10 @@ final class PopupContentBuilderDailyBudgetTests: XCTestCase {
             state(windows: [weekly]), now: now, surface: .menuBar,
             showDailyBudget: true, calendar: utcCalendar())
 
-        XCTAssertEqual(section.rows.count, 2)
-        guard section.rows.count == 2,
-              case .window = section.rows[0], case .dailyBudget = section.rows[1] else {
+        XCTAssertEqual(section.rows.count, 3)
+        guard section.rows.count == 3,
+              case .window = section.rows[0], case .paceComparison = section.rows[1],
+              case .dailyBudget = section.rows[2] else {
             return XCTFail("daily budget must follow the weekly window on the menu-bar surface: \(section.rows)")
         }
         XCTAssertNotNil(dailyBudget(in: section))
@@ -962,16 +963,27 @@ final class PopupContentBuilderSurfaceTests: XCTestCase {
         XCTAssertEqual(paceRows.map(\.windowDurationMins), [300, 10080])
     }
 
+    func test_menuBarAddsPaceRowsForWindows() {
+        let rows = PopupContentBuilder.section(state(), now: now, surface: .menuBar).rows
+        let paceRows = rows.compactMap { row -> PaceComparisonContent? in
+            guard case .paceComparison(let content) = row else { return nil }
+            return content
+        }
+
+        XCTAssertEqual(paceRows.map(\.windowDurationMins), [300, 10080])
+        XCTAssertEqual(paceRows.map(\.status), [.collectingHistory, .collectingHistory])
+    }
+
     func test_menuBarOmitsDetailAndTechnicalRows() {
         let rows = PopupContentBuilder.section(state(), now: now, surface: .menuBar).rows
 
         XCTAssertFalse(rows.contains { row in
             switch row {
-            case .detail, .burnRate, .sparkline, .paceComparison, .cost:
+            case .detail, .burnRate, .sparkline, .cost:
                 return true
             case .dailyBudget:
                 return false
-            case .window, .error, .recovery, .note:
+            case .window, .paceComparison, .error, .recovery, .note:
                 return false
             }
         })
