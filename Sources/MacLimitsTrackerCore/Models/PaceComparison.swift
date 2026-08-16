@@ -36,6 +36,33 @@ public struct PaceComparisonContent: Equatable, Sendable {
         self.forecastAt = forecastAt
         self.status = status
     }
+
+    public func compactText(now: Date = Date()) -> String {
+        guard status != .unavailable else { return "Usage unavailable" }
+
+        var parts: [String] = [
+            status == .atRisk ? "At risk" : status == .onPace ? "On pace" : "Collecting history"
+        ]
+        if let quotaRemainingPercent {
+            parts.append(String(format: "%.0f%% left", quotaRemainingPercent))
+        }
+
+        switch status {
+        case .atRisk:
+            if let forecastAt {
+                parts.append("runs out \(LimitsFormatting.timeToExhaustionText(forecastAt.timeIntervalSince(now)))")
+            }
+            parts.append("switch or wait")
+        case .onPace, .collectingHistory:
+            if let resetAt {
+                parts.append("reset \(LimitsFormatting.timeToExhaustionText(resetAt.timeIntervalSince(now)))")
+            }
+        case .unavailable:
+            break
+        }
+
+        return parts.joined(separator: " · ")
+    }
 }
 
 public enum PaceComparisonPolicy {
