@@ -1,0 +1,6 @@
+interface:
+  display_name: "Mac Limits Tracker"
+  short_description: "Repo-specific patterns and workflows for mac-limits-tracker"
+  default_prompt: "Use the mac-limits-tracker repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
